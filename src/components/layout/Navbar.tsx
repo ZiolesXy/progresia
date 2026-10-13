@@ -1,126 +1,143 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, LogOut, Menu, X } from "lucide-react";
-import { currentUser } from "../../data/dummy";
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, Users, LogOut, Menu, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
+import { supabase } from '../../lib/supabase/client'
 
 const navigation = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Kelompok", href: "/groups", icon: Users },
-];
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Kelompok', href: '/groups', icon: Users },
+]
+
+interface Profile {
+  full_name: string
+  student_id: string
+}
 
 export function Navbar() {
-    const location = useLocation();
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { user, signOut } = useAuth()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [profile, setProfile] = useState<Profile | null>(null)
 
-    return (
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div className="flex h-16 items-center justify-between">
-                    {/* Logo */}
-                    <Link to="/" className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
-                            <span className="text-sm font-bold text-white">P</span>
-                        </div>
-                        <span className="hidden font-semibold text-slate-900 sm:block">
-                            Progresia
-                        </span>
-                    </Link>
+  // Ambil data profil dari tabel profiles berdasarkan user yang login
+  useEffect(() => {
+    if (user) {
+      const fetchProfile = async () => {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, student_id')
+          .eq('id', user.id)
+          .single()
 
-                    {/* Desktop Navigation */}
-                    <nav className="hidden items-center gap-1 md:flex">
-                        {navigation.map((item) => {
-                            const isActive = location.pathname === item.href;
-                            const Icon = item.icon;
+        if (!error && data) {
+          setProfile(data)
+        }
+      }
+      fetchProfile()
+    } else {
+      setProfile(null)
+    }
+  }, [user])
 
-                            return (
-                                <Link
-                                    key={item.name}
-                                    to={item.href}
-                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isActive
-                                            ? "bg-primary-50 text-primary-700"
-                                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                        }`}
-                                >
-                                    <Icon className="h-4 w-4" />
-                                    {item.name}
-                                </Link>
-                            );
-                        })}
-                    </nav>
+  const handleLogout = async () => {
+    await signOut()
+    navigate('/login')
+  }
 
-                    {/* User Menu */}
-                    <div className="flex items-center gap-3">
-                        <div className="hidden items-center gap-2.5 sm:flex">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100">
-                                <span className="text-sm font-medium text-primary-700">
-                                    {currentUser.fullName.charAt(0)}
-                                </span>
-                            </div>
-                            <div className="text-sm">
-                                <p className="font-medium leading-tight text-slate-900">
-                                    {currentUser.fullName}
-                                </p>
-                                <p className="text-xs leading-tight text-slate-500">
-                                    {currentUser.studentId}
-                                </p>
-                            </div>
-                        </div>
+  // Jika belum login, jangan tampilkan navbar (halaman login/register punya layout sendiri)
+  if (!user) return null
 
-                        <button
-                            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                            title="Keluar"
-                        >
-                            <LogOut className="h-4 w-4" />
-                        </button>
-
-                        <button
-                            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden"
-                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                            aria-label="Toggle menu"
-                        >
-                            {mobileMenuOpen ? (
-                                <X className="h-5 w-5" />
-                            ) : (
-                                <Menu className="h-5 w-5" />
-                            )}
-                        </button>
-                    </div>
-                </div>
-
-                {/* Mobile Menu */}
-                {mobileMenuOpen && (
-                    <nav className="space-y-1 border-t border-slate-100 py-3 md:hidden">
-                        {navigation.map((item) => {
-                            const isActive = location.pathname === item.href;
-                            const Icon = item.icon;
-
-                            return (
-                                <Link
-                                    key={item.name}
-                                    to={item.href}
-                                    onClick={() => setMobileMenuOpen(false)}
-                                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive
-                                            ? "bg-primary-50 text-primary-700"
-                                            : "text-slate-600 hover:bg-slate-50"
-                                        }`}
-                                >
-                                    <Icon className="h-4 w-4" />
-                                    {item.name}
-                                </Link>
-                            );
-                        })}
-
-                        <div className="mt-2 border-t border-slate-100 pt-2 sm:hidden">
-                            <p className="px-3 text-sm font-medium text-slate-900">
-                                {currentUser.fullName}
-                            </p>
-                            <p className="px-3 text-xs text-slate-500">
-                                {currentUser.studentId}
-                            </p>
-                        </div>
-                    </nav>
-                )}
+  return (
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
+              <span className="text-white font-bold text-sm">K</span>
             </div>
-        </header>
-    );
+            <span className="font-semibold text-slate-900 hidden sm:block">Kontribusi</span>
+          </Link>
+
+          <nav className="hidden md:flex items-center gap-1">
+            {navigation.map((item) => {
+              const isActive = location.pathname === item.href
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`
+                    inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
+                    transition-colors
+                    ${isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                  `}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.name}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
+                <span className="text-primary-700 font-medium text-sm">
+                  {profile?.full_name?.charAt(0) || user.email?.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div className="text-sm">
+                <p className="font-medium text-slate-900 leading-tight">
+                  {profile?.full_name || 'User'}
+                </p>
+                <p className="text-slate-500 text-xs leading-tight">
+                  {profile?.student_id || user.email}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              title="Keluar"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+            <button
+              className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+
+        {mobileMenuOpen && (
+          <nav className="md:hidden py-3 border-t border-slate-100 space-y-1">
+            {navigation.map((item) => {
+              const isActive = location.pathname === item.href
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`
+                    flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
+                    ${isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-slate-600 hover:bg-slate-50'}
+                  `}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.name}
+                </Link>
+              )
+            })}
+          </nav>
+        )}
+      </div>
+    </header>
+  )
 }

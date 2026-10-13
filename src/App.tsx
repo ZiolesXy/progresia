@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import { ProtectedRoute } from './components/ProtectedRoute'
 import { HomePage } from './pages/HomePage'
 import { GroupsPage } from './pages/GroupsPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
@@ -12,18 +14,24 @@ import { RegisterPage } from './pages/RegisterPage'
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/groups" element={<GroupsPage />} />
-        <Route path="/groups/:groupId" element={<GroupDetailPage />} />
-        <Route path="/groups/:groupId/tasks" element={<TasksPage />} />
-        <Route path="/groups/:groupId/tasks/:taskId" element={<TaskDetailPage />} />
-        <Route path="/groups/:groupId/evaluation" element={<EvaluationPage />} />
-        <Route path="/groups/:groupId/report" element={<ReportPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          {/* Halaman Publik */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          
+          {/* Halaman Terproteksi */}
+          <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/groups" element={<ProtectedRoute><GroupsPage /></ProtectedRoute>} />
+          <Route path="/groups/:groupId" element={<ProtectedRoute><GroupDetailPage /></ProtectedRoute>} />
+          <Route path="/groups/:groupId/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
+          <Route path="/groups/:groupId/tasks/:taskId" element={<ProtectedRoute><TaskDetailPage /></ProtectedRoute>} />
+          <Route path="/groups/:groupId/evaluation" element={<ProtectedRoute><EvaluationPage /></ProtectedRoute>} />
+          <Route path="/groups/:groupId/report" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
+          
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   )
 }
