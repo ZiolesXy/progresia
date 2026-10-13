@@ -2,6 +2,7 @@ import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Users, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 import { groups, tasks } from '../data/dummy'
+import { Link } from 'react-router-dom'
 
 const stats = [
   { label: 'Kelompok Aktif', value: groups.length, icon: Users, color: 'text-primary-600 bg-primary-50' },
@@ -48,11 +49,10 @@ export function HomePage() {
                       {task.assigneeName} · {new Date(task.deadline).toLocaleDateString('id-ID')}
                     </p>
                   </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
-                    task.priority === 'high' ? 'bg-red-50 text-red-700' :
-                    task.priority === 'medium' ? 'bg-amber-50 text-amber-700' :
-                    'bg-slate-100 text-slate-600'
-                  }`}>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${task.priority === 'high' ? 'bg-red-50 text-red-700' :
+                      task.priority === 'medium' ? 'bg-amber-50 text-amber-700' :
+                        'bg-slate-100 text-slate-600'
+                    }`}>
                     {task.priority === 'high' ? 'Tinggi' : task.priority === 'medium' ? 'Sedang' : 'Rendah'}
                   </span>
                 </li>
@@ -64,10 +64,12 @@ export function HomePage() {
           <ul className="space-y-3">
             {groups.map((group) => (
               <li key={group.id} className="py-2 border-b border-slate-100 last:border-0">
-                <p className="text-sm font-medium text-slate-900">{group.name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {group.courseName} · {group.memberCount}/{group.capacity} anggota
-                </p>
+                <Link to={`/groups/${group.id}`} className="block hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors">
+                  <p className="text-sm font-medium text-slate-900">{group.name}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {group.courseName} · {group.memberCount}/{group.capacity} anggota
+                  </p>
+                </Link>
               </li>
             ))}
           </ul>

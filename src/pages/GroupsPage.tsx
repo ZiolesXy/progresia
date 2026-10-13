@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -6,6 +7,8 @@ import { Plus, Users } from 'lucide-react'
 import { groups } from '../data/dummy'
 
 export function GroupsPage() {
+  const navigate = useNavigate()
+
   return (
     <Layout>
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
@@ -21,7 +24,11 @@ export function GroupsPage() {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {groups.map((group) => (
-          <Card key={group.id} className="hover:border-slate-300 transition-colors cursor-pointer">
+          <Card
+            key={group.id}
+            className="hover:border-slate-300 transition-colors cursor-pointer"
+            onClick={() => navigate(`/groups/${group.id}`)}
+          >
             <div className="flex items-start justify-between mb-3">
               <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
                 <Users className="w-5 h-5 text-primary-600" />
