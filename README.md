@@ -25,4 +25,4 @@ Aplikasi web untuk membantu mahasiswa mengelola tugas kelompok dan mengevaluasi 
 1. Clone repositori:
    ```bash
    git clone <repository-url>
-   cd kontribusi-app
+   cd Progresia-app

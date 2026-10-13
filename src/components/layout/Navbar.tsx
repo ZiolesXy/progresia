@@ -55,9 +55,9 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">K</span>
+              <span className="text-white font-bold text-sm">P</span>
             </div>
-            <span className="font-semibold text-slate-900 hidden sm:block">Kontribusi</span>
+            <span className="font-semibold text-slate-900 hidden sm:block">Progresia</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">

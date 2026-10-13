@@ -56,7 +56,7 @@ export function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex w-12 h-12 rounded-xl bg-primary-600 items-center justify-center mb-4">
-            <span className="text-white font-bold text-xl">K</span>
+            <span className="text-white font-bold text-xl">P</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900">Buat Akun Baru</h1>
           <p className="mt-1 text-slate-500">Mulai kelola kontribusi kelompok Anda.</p>
