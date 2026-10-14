@@ -8,6 +8,7 @@ import { Plus, Users, Loader2 } from 'lucide-react'
 import { useGroups } from '../hooks/useGroups'
 import { CreateGroupModal } from '../components/CreateGroupModal'
 import { JoinGroupModal } from '../components/JoinGroupModal'
+import { EmptyState } from '../components/ui/EmptyState'
 
 export function GroupsPage() {
   const navigate = useNavigate()
@@ -36,7 +37,7 @@ export function GroupsPage() {
               : `${groups.length} kelompok yang Anda ikuti.`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setShowJoinModal(true)}>
             Gabung Kelompok
           </Button>
@@ -49,19 +50,18 @@ export function GroupsPage() {
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {error}
+          Gagal memuat kelompok. {error}
         </div>
       )}
 
       {groups.length === 0 ? (
         <Card>
-          <div className="text-center py-12">
-            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">Belum ada kelompok</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Buat kelompok baru atau gabung dengan kelompok yang sudah ada.
-            </p>
-            <div className="flex gap-2 justify-center">
+          <EmptyState
+            icon={Users}
+            title="Belum ada data"
+            description="Buat kelompok baru atau gabung dengan kelompok yang sudah ada."
+            action={
+              <div className="flex flex-wrap gap-2 justify-center">
               <Button variant="outline" onClick={() => setShowJoinModal(true)}>
                 Gabung Kelompok
               </Button>
@@ -70,7 +70,8 @@ export function GroupsPage() {
                 Buat Kelompok
               </Button>
             </div>
-          </div>
+            }
+          />
         </Card>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -86,10 +87,10 @@ export function GroupsPage() {
                 </div>
                 {group.is_leader && <Badge variant="info" size="sm">Ketua</Badge>}
               </div>
-              <h3 className="font-semibold text-slate-900">{group.name}</h3>
-              <p className="text-sm text-slate-500 mt-0.5">{group.course_name}</p>
+              <h3 className="font-semibold text-slate-900 break-words">{group.name}</h3>
+              <p className="text-sm text-slate-500 mt-0.5 break-words">{group.course_name}</p>
               {group.description && (
-                <p className="text-sm text-slate-600 mt-3 line-clamp-2">{group.description}</p>
+                <p className="text-sm text-slate-600 mt-3 line-clamp-2 break-words">{group.description}</p>
               )}
               <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-sm">
                 <span className="text-slate-500">

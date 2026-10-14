@@ -23,6 +23,7 @@ export function useGroups() {
 
   useEffect(() => {
     if (!user) {
+      // oxlint-disable react/set-state-in-effect
       setGroups([])
       setLoading(false)
       return

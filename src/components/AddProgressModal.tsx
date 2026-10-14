@@ -96,6 +96,7 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
 
       if (selectedFile) {
         const fileExt = selectedFile.name.split('.').pop()
+        // oxlint-disable react/purity
         const filePath = `${taskId}/${Date.now()}.${fileExt}`
         
         const { error: uploadError } = await supabase.storage

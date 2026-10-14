@@ -9,6 +9,7 @@ import { useTasks } from '../hooks/useTasks'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase/client'
 import { CreateTaskModal } from '../components/CreateTaskModal'
+import { EmptyState } from '../components/ui/EmptyState'
 
 type StatusFilter = 'all' | 'todo' | 'in_progress' | 'in_review' | 'done'
 
@@ -113,8 +114,9 @@ export function TasksPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {error}
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -138,12 +140,11 @@ export function TasksPage() {
         </div>
 
         {filteredTasks.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 text-sm">
-              {tasks.length === 0 ? 'Belum ada tugas di kelompok ini.' : 'Tidak ada tugas dengan status ini.'}
-            </p>
-          </div>
+          <EmptyState
+            icon={Users}
+            title="Belum ada data"
+            description={tasks.length === 0 ? 'Belum ada tugas di kelompok ini.' : 'Tidak ada tugas dengan status ini.'}
+          />
         ) : (
           <ul className="divide-y divide-slate-100">
             {filteredTasks.map((task) => {
@@ -154,10 +155,10 @@ export function TasksPage() {
                     onClick={() => navigate(`/groups/${groupId}/tasks/${task.id}`)}
                     className="block hover:bg-slate-50 -mx-5 px-5 py-2 rounded-lg transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start justify-between gap-4 min-w-0">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-base font-semibold text-slate-900 truncate">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
+                          <h3 className="text-base font-semibold text-slate-900 break-words">
                             {task.title}
                           </h3>
                           <Badge variant={statusColor[task.status]} size="sm">
@@ -170,12 +171,12 @@ export function TasksPage() {
                         )}
                         <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                           {task.assignee ? (
-                            <span>👤 {task.assignee.full_name}</span>
+                            <span className="break-words">Penanggung jawab: {task.assignee.full_name}</span>
                           ) : (
-                            <span className="text-amber-600">👤 Belum diassign</span>
+                            <span className="text-amber-600">Belum diassign</span>
                           )}
                           {task.deadline && (
-                            <span>📅 {new Date(task.deadline).toLocaleDateString('id-ID')}</span>
+                            <span>Tenggat: {new Date(task.deadline).toLocaleDateString('id-ID')}</span>
                           )}
                           <span className={`font-medium ${
                             task.priority === 'high' ? 'text-red-600' :

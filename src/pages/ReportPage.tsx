@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge'
 import { ArrowLeft, Loader2, AlertCircle, User, CheckCircle2, TrendingUp, Printer, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../contexts/AuthContext'
+import { EmptyState } from '../components/ui/EmptyState'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -66,33 +67,36 @@ export function ReportPage() {
 
       try {
         // 1. Ambil info kelompok
-        const { data: groupData } = await supabase
+        const { data: groupData, error: groupError } = await supabase
           .from('groups')
           .select('name, description')
           .eq('id', groupId)
           .single()
         
+        if (groupError) throw groupError
         if (groupData) {
           setGroupInfo(groupData as GroupInfo)
         }
 
         // 2. Ambil periode evaluasi terbaru
-        const { data: periodData } = await supabase
+        const { data: periodData, error: periodError } = await supabase
           .from('contribution_periods')
           .select('*')
           .eq('group_id', groupId)
           .order('created_at', { ascending: false })
           .limit(1)
 
+        if (periodError) throw periodError
         const currentPeriod = periodData && periodData.length > 0 ? (periodData[0] as Period) : null
         setPeriod(currentPeriod)
 
         // 3. Ambil daftar anggota
-        const { data: membersData } = await supabase
+        const { data: membersData, error: membersError } = await supabase
           .from('group_members')
           .select(`user_id, profiles:user_id(full_name, student_id)`)
           .eq('group_id', groupId)
 
+        if (membersError) throw membersError
         if (membersData) {
           const formattedMembers = membersData.map((m: any) => ({
             user_id: m.user_id,
@@ -103,11 +107,12 @@ export function ReportPage() {
 
         // 4. Hitung rata-rata nilai
         if (currentPeriod) {
-          const { data: allVotes } = await supabase
+          const { data: allVotes, error: votesError } = await supabase
             .from('contribution_votes')
             .select('target_id, score')
             .eq('period_id', currentPeriod.id)
 
+          if (votesError) throw votesError
           const results: Record<string, EvalResult> = {}
           if (allVotes && Array.isArray(allVotes)) {
             const grouped = allVotes.reduce((acc: Record<string, { sum: number; count: number }>, vote: any) => {
@@ -130,11 +135,12 @@ export function ReportPage() {
           setEvalResults(results)
 
           // 5. Ambil review ketua
-          const { data: reviews } = await supabase
+          const { data: reviews, error: reviewsError } = await supabase
             .from('contribution_reviews')
             .select('target_id, review_text, adjusted_score')
             .eq('period_id', currentPeriod.id)
           
+          if (reviewsError) throw reviewsError
           if (reviews) {
             const reviewsMap: Record<string, LeaderReviewData> = {}
             reviews.forEach((r: any) => {
@@ -147,11 +153,12 @@ export function ReportPage() {
           }
 
           // 6. Hitung statistik tugas
-          const { data: tasksData } = await supabase
+          const { data: tasksData, error: tasksError } = await supabase
             .from('tasks')
             .select('status, deadline')
             .eq('group_id', groupId)
           
+          if (tasksError) throw tasksError
           if (tasksData) {
             const total = tasksData.length
             const done = tasksData.filter(t => t.status === 'done').length
@@ -325,13 +332,13 @@ export function ReportPage() {
           <ArrowLeft className="w-4 h-4" /> Kembali ke Kelompok
         </button>
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-slate-900">Laporan Kontribusi</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 break-words">
               {period ? `Periode: ${period.title}` : 'Belum ada periode evaluasi'}
             </p>
           </div>
-          <div className="flex gap-2 print:hidden">
+          <div className="flex flex-wrap gap-2 print:hidden">
             <Button variant="outline" size="sm" onClick={handlePrint}>
               <Printer className="w-4 h-4 mr-2" /> Cetak
             </Button>
@@ -393,9 +400,9 @@ export function ReportPage() {
 
         {/* Tabel Ringkasan Nilai */}
         <Card title="Ringkasan Nilai Akhir" description="Berdasarkan evaluasi antarteman dan review ketua">
-          {period ? (
+          {period && members.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-200">
                     <th className="text-left py-3 px-2 font-medium text-slate-600">Anggota</th>
@@ -421,9 +428,9 @@ export function ReportPage() {
                                 {member.profiles?.full_name?.charAt(0) || '?'}
                               </span>
                             </div>
-                            <div>
-                              <p className="font-medium text-slate-900">{member.profiles?.full_name || 'Anggota'}</p>
-                              <p className="text-xs text-slate-500">{member.profiles?.student_id || '-'}</p>
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-900 break-words">{member.profiles?.full_name || 'Anggota'}</p>
+                              <p className="text-xs text-slate-500 break-words">{member.profiles?.student_id || '-'}</p>
                             </div>
                           </div>
                         </td>
@@ -438,7 +445,7 @@ export function ReportPage() {
                           </Badge>
                         </td>
                         <td className="py-3 px-2">
-                          <p className="text-xs text-slate-600">
+                          <p className="text-xs text-slate-600 break-words">
                             {review?.review_text || (hasAdjustment ? 'Disesuaikan oleh ketua.' : 'Tidak ada perubahan, nilai rata-rata sudah adil.')}
                           </p>
                         </td>
@@ -449,9 +456,11 @@ export function ReportPage() {
               </table>
             </div>
           ) : (
-            <div className="text-center py-8 text-slate-500">
-              Belum ada periode evaluasi untuk ditampilkan.
-            </div>
+            <EmptyState
+              icon={User}
+              title="Belum ada data"
+              description={period ? 'Belum ada anggota kelompok untuk ditampilkan.' : 'Belum ada periode evaluasi untuk ditampilkan.'}
+            />
           )}
         </Card>
 

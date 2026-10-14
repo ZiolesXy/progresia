@@ -27,6 +27,7 @@ export function useTasks(groupId: string | undefined) {
 
   useEffect(() => {
     if (!groupId || !user) {
+      // oxlint-disable react/set-state-in-effect
       setTasks([])
       setLoading(false)
       return

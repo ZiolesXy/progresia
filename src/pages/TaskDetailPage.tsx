@@ -3,11 +3,12 @@ import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { ArrowLeft, User, Flag, Calendar, Loader2, TrendingUp, Lock, Play, CheckCircle2, RotateCcw, FileText, Clock, Eye } from 'lucide-react'
+import { ArrowLeft, User, Flag, Calendar, Loader2, TrendingUp, Lock, Play, CheckCircle2, RotateCcw, FileText, Clock, Eye, AlertCircle } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../contexts/AuthContext'
 import { AddProgressModal } from '../components/AddProgressModal'
+import { EmptyState } from '../components/ui/EmptyState'
 
 interface TaskDetail {
   id: string
@@ -39,6 +40,7 @@ export function TaskDetailPage() {
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [progressUpdates, setProgressUpdates] = useState<ProgressUpdate[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [isLeader, setIsLeader] = useState(false)
   const [isAssignee, setIsAssignee] = useState(false)
@@ -50,60 +52,65 @@ export function TaskDetailPage() {
 
     const fetchData = async () => {
       setLoading(true)
+      setError(null)
 
-      const { data: taskData, error: taskError } = await supabase
-        .from('tasks')
-        .select(`*, assignee:assignee_id (full_name, student_id)`)
-        .eq('id', taskId)
-        .single()
+      try {
+        const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .select(`*, assignee:assignee_id (full_name, student_id)`)
+          .eq('id', taskId)
+          .single()
 
-      if (taskError || !taskData) { 
+        if (taskError || !taskData) {
+          setError('Tugas tidak ditemukan atau Anda tidak memiliki akses.')
+          return
+        }
+
+        const formattedTask = { 
+          ...taskData, 
+          assignee: Array.isArray(taskData.assignee) ? taskData.assignee[0] : taskData.assignee 
+        }
+        setTask(formattedTask)
+
+        const { data: progressData, error: progressError } = await supabase
+          .from('progress_updates')
+          .select(`
+            id, 
+            description, 
+            progress_percentage, 
+            created_at,
+            user_id,
+            profiles:user_id(full_name),
+            progress_files(id, file_path, file_name)
+          `)
+          .eq('task_id', taskId)
+          .order('created_at', { ascending: true })
+
+        if (progressError) throw progressError
+
+        if (progressData) {
+          setProgressUpdates(progressData.map((p: any) => ({ 
+            ...p, 
+            profiles: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles,
+            progress_files: p.progress_files || []
+          })))
+        }
+
+        const { data: memberData, error: memberError } = await supabase
+          .from('group_members')
+          .select('role')
+          .eq('group_id', groupId)
+          .eq('user_id', user.id)
+          .single()
+
+        if (memberError) throw memberError
+        setIsLeader(memberData?.role === 'leader')
+        setIsAssignee(taskData.assignee_id === user.id)
+      } catch (err: any) {
+        setError(err.message || 'Gagal memuat detail tugas. Silakan coba lagi nanti.')
+      } finally {
         setLoading(false)
-        return 
       }
-
-      const formattedTask = { 
-        ...taskData, 
-        assignee: Array.isArray(taskData.assignee) ? taskData.assignee[0] : taskData.assignee 
-      }
-      setTask(formattedTask)
-
-      const { data: progressData, error: progressError } = await supabase
-        .from('progress_updates')
-        .select(`
-          id, 
-          description, 
-          progress_percentage, 
-          created_at,
-          user_id,
-          profiles:user_id(full_name),
-          progress_files(id, file_path, file_name)
-        `)
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: true })
-
-      if (progressError) {
-        console.error("Error fetching progress:", progressError)
-      }
-
-      if (progressData) {
-        setProgressUpdates(progressData.map((p: any) => ({ 
-          ...p, 
-          profiles: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles,
-          progress_files: p.progress_files || []
-        })))
-      }
-
-      const { data: memberData } = await supabase
-        .from('group_members')
-        .select('role')
-        .eq('group_id', groupId)
-        .eq('user_id', user.id)
-        .single()
-
-      setIsLeader(memberData?.role === 'leader')
-      setIsAssignee(taskData.assignee_id === user.id)
-      setLoading(false)
     }
 
     fetchData()
@@ -116,7 +123,7 @@ export function TaskDetailPage() {
     if (!error) {
       setTask({ ...task, status: newStatus as any })
     } else {
-      alert('Gagal mengubah status: ' + error.message)
+      setError(error.message || 'Gagal mengubah status tugas.')
     }
     setUpdatingStatus(false)
   }
@@ -132,7 +139,8 @@ export function TaskDetailPage() {
   if (!task) return (
     <Layout>
       <div className="text-center py-12 px-4">
-        <p className="text-slate-500 mb-4">Tugas tidak ditemukan.</p>
+        <AlertCircle className="w-12 h-12 text-red-300 mx-auto mb-3" />
+        <p className="text-slate-500 mb-4">{error || 'Tugas tidak ditemukan.'}</p>
         <Link to={`/groups/${groupId}/tasks`} className="text-primary-600 hover:underline">Kembali</Link>
       </div>
     </Layout>
@@ -165,6 +173,12 @@ export function TaskDetailPage() {
 
       {/* GRID LAYOUT - 1 KOLOM DI MOBILE, 3 KOLOM DI DESKTOP */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 px-4 sm:px-0">
+        {error && (
+          <div className="lg:col-span-3 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
         
         {/* KOLOM KIRI: DESKRIPSI & PROGRES (2/3 di desktop) */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
@@ -179,7 +193,11 @@ export function TaskDetailPage() {
           {/* Card Riwayat Progres */}
           <Card title="Riwayat Progres" description={`${progressUpdates.length} pembaruan`}>
             {progressUpdates.length === 0 ? (
-              <div className="text-center py-6 text-slate-500 text-sm">Belum ada pembaruan progres.</div>
+              <EmptyState
+                icon={TrendingUp}
+                title="Belum ada data"
+                description="Belum ada pembaruan progres untuk tugas ini."
+              />
             ) : (
               <ol className="relative border-l-2 border-slate-200 ml-3 space-y-4 sm:space-y-6">
                 {progressUpdates.map((update) => (
@@ -199,7 +217,7 @@ export function TaskDetailPage() {
                       {/* File Lampiran */}
                       {update.progress_files && update.progress_files.length > 0 && (
                         <div className="mb-3 space-y-2">
-                          <p className="text-xs font-medium text-slate-500">📎 File Lampiran:</p>
+                          <p className="text-xs font-medium text-slate-500">File Lampiran:</p>
                           {update.progress_files.map((file: any) => (
                             <div 
                               key={file.id}

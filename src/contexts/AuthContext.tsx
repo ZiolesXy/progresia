@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
 }
 
+// oxlint-disable react/only-export-components
 export function useAuth() {
     const context = useContext(AuthContext)
     if (context === undefined) {

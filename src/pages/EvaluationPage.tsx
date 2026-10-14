@@ -8,6 +8,7 @@ import { Input } from '../components/ui/Input'
 import { ArrowLeft, Calendar, CheckCircle2, XCircle, Loader2, Lock, Unlock, AlertCircle, User, Save, Star, MessageSquare, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../contexts/AuthContext'
+import { EmptyState } from '../components/ui/EmptyState'
 
 interface Period {
   id: string
@@ -67,104 +68,115 @@ export function EvaluationPage() {
       setLoading(true)
       setError(null)
 
-      const { data: memberData } = await supabase
-        .from('group_members')
-        .select('role')
-        .eq('group_id', groupId)
-        .eq('user_id', user.id)
-        .single()
-
-      setIsLeader(memberData?.role === 'leader')
-
-      const { data: periodData } = await supabase
-        .from('contribution_periods')
-        .select('*')
-        .eq('group_id', groupId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      const currentPeriod = periodData && periodData.length > 0 ? (periodData[0] as Period) : null
-      setPeriod(currentPeriod)
-
-      if (currentPeriod) {
-        const { data: membersData } = await supabase
+      try {
+        const { data: memberData, error: memberError } = await supabase
           .from('group_members')
-          .select(`user_id, profiles:user_id(full_name, student_id)`)
+          .select('role')
           .eq('group_id', groupId)
+          .eq('user_id', user.id)
+          .single()
 
-        if (membersData) {
-          const formattedMembers = membersData.map((m: any) => ({
-            user_id: m.user_id,
-            profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles
-          }))
-          setMembers(formattedMembers)
-        }
+        if (memberError) throw memberError
+        setIsLeader(memberData?.role === 'leader')
 
-        const { data: existingVotes } = await supabase
-          .from('contribution_votes')
-          .select('target_id, score, comment')
-          .eq('period_id', currentPeriod.id)
-          .eq('voter_id', user.id)
+        const { data: periodData, error: periodError } = await supabase
+          .from('contribution_periods')
+          .select('*')
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: false })
+          .limit(1)
 
-        if (existingVotes) {
-          const votesMap: Record<string, VoteData> = {}
-          existingVotes.forEach((v: any) => {
-            votesMap[v.target_id] = { score: v.score, comment: v.comment || '' }
-          })
-          setVotes(votesMap)
-        }
+        if (periodError) throw periodError
 
-        const { data: allVotes } = await supabase
-          .from('contribution_votes')
-          .select('target_id, score')
-          .eq('period_id', currentPeriod.id)
+        const currentPeriod = periodData && periodData.length > 0 ? (periodData[0] as Period) : null
+        setPeriod(currentPeriod)
 
-        const results: Record<string, EvalResult> = {}
-        if (allVotes && Array.isArray(allVotes)) {
-          const grouped = allVotes.reduce((acc: Record<string, { sum: number; count: number }>, vote: any) => {
-            if (!acc[vote.target_id]) {
-              acc[vote.target_id] = { sum: 0, count: 0 }
-            }
-            acc[vote.target_id].sum += Number(vote.score)
-            acc[vote.target_id].count += 1
-            return acc
-          }, {})
+        if (currentPeriod) {
+          const { data: membersData, error: membersError } = await supabase
+            .from('group_members')
+            .select(`user_id, profiles:user_id(full_name, student_id)`)
+            .eq('group_id', groupId)
 
-          for (const [target_id, val] of Object.entries(grouped)) {
-            results[target_id] = {
-              target_id,
-              avg_score: Math.round(val.sum / val.count),
-              voter_count: val.count
-            }
+          if (membersError) throw membersError
+
+          if (membersData) {
+            const formattedMembers = membersData.map((m: any) => ({
+              user_id: m.user_id,
+              profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles
+            }))
+            setMembers(formattedMembers)
           }
-        }
-        setEvalResults(results)
 
-        if (memberData?.role === 'leader') {
-          const { data: reviews, error: reviewsError } = await supabase
-            .from('contribution_reviews')
-            .select('target_id, review_text, adjusted_score')
+          const { data: existingVotes, error: existingVotesError } = await supabase
+            .from('contribution_votes')
+            .select('target_id, score, comment')
             .eq('period_id', currentPeriod.id)
-            .eq('reviewer_id', user.id)
-          
-          if (reviewsError) {
-            console.error("Error fetching reviews:", reviewsError)
-          }
-          
-          if (reviews) {
-            const reviewsMap: Record<string, LeaderReviewData> = {}
-            reviews.forEach((r: any) => {
-              reviewsMap[r.target_id] = { 
-                review_text: r.review_text || '', 
-                adjusted_score: r.adjusted_score 
-              }
+            .eq('voter_id', user.id)
+
+          if (existingVotesError) throw existingVotesError
+
+          if (existingVotes) {
+            const votesMap: Record<string, VoteData> = {}
+            existingVotes.forEach((v: any) => {
+              votesMap[v.target_id] = { score: v.score, comment: v.comment || '' }
             })
-            setLeaderReviews(reviewsMap)
+            setVotes(votesMap)
+          }
+
+          const { data: allVotes, error: allVotesError } = await supabase
+            .from('contribution_votes')
+            .select('target_id, score')
+            .eq('period_id', currentPeriod.id)
+
+          if (allVotesError) throw allVotesError
+
+          const results: Record<string, EvalResult> = {}
+          if (allVotes && Array.isArray(allVotes)) {
+            const grouped = allVotes.reduce((acc: Record<string, { sum: number; count: number }>, vote: any) => {
+              if (!acc[vote.target_id]) {
+                acc[vote.target_id] = { sum: 0, count: 0 }
+              }
+              acc[vote.target_id].sum += Number(vote.score)
+              acc[vote.target_id].count += 1
+              return acc
+            }, {})
+
+            for (const [target_id, val] of Object.entries(grouped)) {
+              results[target_id] = {
+                target_id,
+                avg_score: Math.round(val.sum / val.count),
+                voter_count: val.count
+              }
+            }
+          }
+          setEvalResults(results)
+
+          if (memberData?.role === 'leader') {
+            const { data: reviews, error: reviewsError } = await supabase
+              .from('contribution_reviews')
+              .select('target_id, review_text, adjusted_score')
+              .eq('period_id', currentPeriod.id)
+              .eq('reviewer_id', user.id)
+            
+            if (reviewsError) throw reviewsError
+            
+            if (reviews) {
+              const reviewsMap: Record<string, LeaderReviewData> = {}
+              reviews.forEach((r: any) => {
+                reviewsMap[r.target_id] = { 
+                  review_text: r.review_text || '', 
+                  adjusted_score: r.adjusted_score 
+                }
+              })
+              setLeaderReviews(reviewsMap)
+            }
           }
         }
+      } catch (err: any) {
+        setError(err.message || 'Gagal memuat data evaluasi. Silakan coba lagi nanti.')
+      } finally {
+        setLoading(false)
       }
-
-      setLoading(false)
     }
 
     fetchData()
@@ -509,11 +521,12 @@ export function EvaluationPage() {
               )}
             </div>
           ) : (
-            <div className="text-center py-8">
-              <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 text-sm mb-4">Belum ada periode evaluasi yang dibuat.</p>
-              {isLeader && <Button onClick={handleOpenPeriod} isLoading={actionLoading}><Unlock className="w-4 h-4 mr-2" /> Buka Periode Evaluasi Pertama</Button>}
-            </div>
+            <EmptyState
+              icon={Calendar}
+              title="Belum ada data"
+              description="Belum ada periode evaluasi yang dibuat."
+              action={isLeader ? <Button onClick={handleOpenPeriod} isLoading={actionLoading}><Unlock className="w-4 h-4 mr-2" /> Buka Periode Evaluasi Pertama</Button> : undefined}
+            />
           )}
         </Card>
 
@@ -521,8 +534,15 @@ export function EvaluationPage() {
         {period && period.status === 'open' && (
           <Card title="Formulir Penilaian Anggota">
             <p className="text-sm text-slate-600 mb-4">Berikan nilai kontribusi (0-100) kepada anggota kelompok Anda. Penilaian ini bersifat rahasia.</p>
-            <div className="space-y-6">
-              {members.filter(m => m.user_id !== user?.id).map((member) => {
+            {members.filter(m => m.user_id !== user?.id).length === 0 ? (
+              <EmptyState
+                icon={User}
+                title="Belum ada data"
+                description="Belum ada anggota lain yang bisa dinilai pada periode ini."
+              />
+            ) : (
+              <div className="space-y-6">
+                {members.filter(m => m.user_id !== user?.id).map((member) => {
                 const currentVote = votes[member.user_id] || { score: undefined, comment: '' }
                 const hasVoted = currentVote.score !== undefined
                 return (
@@ -548,11 +568,12 @@ export function EvaluationPage() {
                     </div>
                   </div>
                 )
-              })}
-              <div className="pt-4 border-t border-slate-200 flex justify-end">
-                <Button onClick={handleSubmitVotes} isLoading={savingVotes} className="w-full sm:w-auto"><Save className="w-4 h-4 mr-2" /> Simpan Semua Penilaian</Button>
+                })}
+                <div className="pt-4 border-t border-slate-200 flex justify-end">
+                  <Button onClick={handleSubmitVotes} isLoading={savingVotes} className="w-full sm:w-auto"><Save className="w-4 h-4 mr-2" /> Simpan Semua Penilaian</Button>
+                </div>
               </div>
-            </div>
+            )}
           </Card>
         )}
 
@@ -562,8 +583,15 @@ export function EvaluationPage() {
             <p className="text-sm text-slate-600 mb-4">
               Rata-rata nilai dihitung otomatis dari seluruh penilaian anggota. Ketua dapat menambahkan review akhir.
             </p>
-            <div className="space-y-4">
-              {members.map((member) => {
+            {members.length === 0 ? (
+              <EmptyState
+                icon={User}
+                title="Belum ada data"
+                description="Belum ada anggota kelompok yang bisa ditampilkan."
+              />
+            ) : (
+              <div className="space-y-4">
+                {members.map((member) => {
                 const result = evalResults[member.user_id]
                 const review = leaderReviews[member.user_id] || { review_text: '', adjusted_score: null }
                 const displayScore = review.adjusted_score !== null ? review.adjusted_score : (result ? result.avg_score : null)
@@ -654,8 +682,9 @@ export function EvaluationPage() {
                     )}
                   </div>
                 )
-              })}
-            </div>
+                })}
+              </div>
+            )}
           </Card>
         )}
 

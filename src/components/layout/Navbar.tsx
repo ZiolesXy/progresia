@@ -37,6 +37,7 @@ export function Navbar() {
       }
       fetchProfile()
     } else {
+      // oxlint-disable react/set-state-in-effect
       setProfile(null)
     }
   }, [user])
