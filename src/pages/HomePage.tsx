@@ -23,12 +23,24 @@ interface GroupSummary {
 
 interface TaskSummary {
   id: string
+  group_id: string
   title: string
   deadline: string | null
   priority: 'low' | 'medium' | 'high'
   status: 'todo' | 'in_progress' | 'in_review' | 'done'
+  assignee_id: string | null
   assignee: { full_name: string | null } | null
 }
+
+const priorityBadgeClass = (priority: TaskSummary['priority']) =>
+  priority === 'high'
+    ? 'bg-red-50 text-red-700'
+    : priority === 'medium'
+      ? 'bg-amber-50 text-amber-700'
+      : 'bg-slate-100 text-slate-600'
+
+const priorityLabel = (priority: TaskSummary['priority']) =>
+  priority === 'high' ? 'Tinggi' : priority === 'medium' ? 'Sedang' : 'Rendah'
 
 export function HomePage() {
   const { user } = useAuth()
@@ -97,7 +109,7 @@ export function HomePage() {
 
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
-          .select('id, title, deadline, priority, status, assignee:assignee_id(full_name)')
+          .select('id, group_id, title, deadline, priority, status, assignee_id, assignee:assignee_id(full_name)')
           .in('group_id', groupIds)
           .order('deadline', { ascending: true, nullsFirst: false })
 
@@ -121,10 +133,49 @@ export function HomePage() {
 
   const firstName = profile?.full_name?.split(' ')[0] || 'User'
 
-  const upcomingTasks = useMemo(
-    () => tasks.filter((task) => task.status !== 'done').slice(0, 4),
-    [tasks]
+  const myTasks = useMemo(
+    () => tasks.filter((task) => task.assignee_id === user?.id),
+    [tasks, user]
   )
+
+  const upcomingTasks = useMemo(() => {
+    const priorityOrder: Record<TaskSummary['priority'], number> = { high: 0, medium: 1, low: 2 }
+    return myTasks
+      .filter((task) => task.status !== 'done')
+      .sort((a, b) => {
+        const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority]
+        if (priorityDiff !== 0) return priorityDiff
+        if (a.deadline && b.deadline) {
+          return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+        }
+        if (a.deadline) return -1
+        if (b.deadline) return 1
+        return 0
+      })
+      .slice(0, 3)
+  }, [myTasks])
+
+  const groupDeadlines = useMemo(() => {
+    const byGroup = new Map<string, TaskSummary[]>()
+    for (const task of myTasks) {
+      if (task.status === 'done') continue
+      const list = byGroup.get(task.group_id) || []
+      list.push(task)
+      byGroup.set(task.group_id, list)
+    }
+    for (const list of byGroup.values()) {
+      list.sort((a, b) => {
+        if (a.deadline && b.deadline) {
+          return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+        }
+        if (a.deadline) return -1
+        if (b.deadline) return 1
+        return 0
+      })
+      list.splice(3)
+    }
+    return byGroup
+  }, [myTasks])
 
   const stats = [
     { label: 'Kelompok Aktif', value: groups.length, icon: Users, color: 'text-primary-600 bg-primary-50' },
@@ -174,12 +225,12 @@ export function HomePage() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <Card title="Tugas Mendatang" description="Tenggat terdekat">
+        <Card title="Tugas Mendatang" description="Prioritas, lalu tenggat terdekat">
           {upcomingTasks.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
               title="Belum ada data"
-              description="Tugas yang belum selesai akan muncul di sini."
+              description="Tugas yang diassign kepada Anda akan muncul di sini."
             />
           ) : (
             <ul className="space-y-3">
@@ -191,11 +242,8 @@ export function HomePage() {
                       {task.assignee?.full_name || 'Belum diassign'} · {task.deadline ? new Date(task.deadline).toLocaleDateString('id-ID') : 'Tanpa tenggat'}
                     </p>
                   </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 self-start ${task.priority === 'high' ? 'bg-red-50 text-red-700' :
-                    task.priority === 'medium' ? 'bg-amber-50 text-amber-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>
-                    {task.priority === 'high' ? 'Tinggi' : task.priority === 'medium' ? 'Sedang' : 'Rendah'}
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 self-start ${priorityBadgeClass(task.priority)}`}>
+                    {priorityLabel(task.priority)}
                   </span>
                 </li>
               ))}
@@ -203,7 +251,7 @@ export function HomePage() {
           )}
         </Card>
 
-        <Card title="Kelompok Saya">
+        <Card title="Kelompok Saya" description="3 deadline terdekat per kelompok">
           {groups.length === 0 ? (
             <EmptyState
               icon={Users}
@@ -212,16 +260,38 @@ export function HomePage() {
             />
           ) : (
             <ul className="space-y-3">
-              {groups.map((group) => (
-                <li key={group.id} className="py-2 border-b border-slate-100 last:border-0">
-                  <Link to={`/groups/${group.id}`} className="block hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors">
-                    <p className="text-sm font-medium text-slate-900 break-words">{group.name}</p>
-                    <p className="text-xs text-slate-500 mt-0.5 break-words">
-                      {group.course_name} · {group.member_count}/{group.capacity} anggota
-                    </p>
-                  </Link>
-                </li>
-              ))}
+              {groups.map((group) => {
+                const deadlines = groupDeadlines.get(group.id) || []
+                return (
+                  <li key={group.id} className="py-2 border-b border-slate-100 last:border-0">
+                    <Link to={`/groups/${group.id}`} className="block hover:bg-slate-50 -mx-2 px-2 py-1 rounded transition-colors">
+                      <p className="text-sm font-medium text-slate-900 break-words">{group.name}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 break-words">
+                        {group.course_name} · {group.member_count}/{group.capacity} anggota
+                      </p>
+                      {deadlines.length > 0 ? (
+                        <ul className="mt-2 space-y-1">
+                          {deadlines.map((task) => (
+                            <li key={task.id} className="flex items-center justify-between gap-2 text-xs">
+                              <span className="text-slate-600 truncate min-w-0">{task.title}</span>
+                              <span className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className={`px-1.5 py-0.5 rounded-full font-medium ${priorityBadgeClass(task.priority)}`}>
+                                  {priorityLabel(task.priority)}
+                                </span>
+                                <span className="text-slate-500">
+                                  {task.deadline ? new Date(task.deadline).toLocaleDateString('id-ID') : 'Tanpa tenggat'}
+                                </span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-slate-400">Belum ada tugas.</p>
+                      )}
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </Card>
