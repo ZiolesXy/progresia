@@ -1,38 +1,50 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { HomePage } from './pages/HomePage'
-import { GroupsPage } from './pages/GroupsPage'
-import { GroupDetailPage } from './pages/GroupDetailPage'
-import { TasksPage } from './pages/TasksPage'
-import { TaskDetailPage } from './pages/TaskDetailPage'
-import { EvaluationPage } from './pages/EvaluationPage'
-import { ReportPage } from './pages/ReportPage'
-import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
+
+const HomePage = lazy(() => import('./pages/HomePage').then((module) => ({ default: module.HomePage })))
+const GroupsPage = lazy(() => import('./pages/GroupsPage').then((module) => ({ default: module.GroupsPage })))
+const GroupDetailPage = lazy(() => import('./pages/GroupDetailPage').then((module) => ({ default: module.GroupDetailPage })))
+const TasksPage = lazy(() => import('./pages/TasksPage').then((module) => ({ default: module.TasksPage })))
+const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })))
+const EvaluationPage = lazy(() => import('./pages/EvaluationPage').then((module) => ({ default: module.EvaluationPage })))
+const ReportPage = lazy(() => import('./pages/ReportPage').then((module) => ({ default: module.ReportPage })))
+const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
+const RegisterPage = lazy(() => import('./pages/RegisterPage').then((module) => ({ default: module.RegisterPage })))
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          {/* Halaman Publik */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          
-          {/* Halaman Terproteksi */}
-          <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-          <Route path="/groups" element={<ProtectedRoute><GroupsPage /></ProtectedRoute>} />
-          <Route path="/groups/:groupId" element={<ProtectedRoute><GroupDetailPage /></ProtectedRoute>} />
-          <Route path="/groups/:groupId/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
-          <Route path="/groups/:groupId/tasks/:taskId" element={<ProtectedRoute><TaskDetailPage /></ProtectedRoute>} />
-          <Route path="/groups/:groupId/evaluation" element={<ProtectedRoute><EvaluationPage /></ProtectedRoute>} />
-          <Route path="/groups/:groupId/report" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
-          
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            {/* Halaman Publik */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            
+            {/* Halaman Terproteksi */}
+            <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+            <Route path="/groups" element={<ProtectedRoute><GroupsPage /></ProtectedRoute>} />
+            <Route path="/groups/:groupId" element={<ProtectedRoute><GroupDetailPage /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/tasks/:taskId" element={<ProtectedRoute><TaskDetailPage /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/evaluation" element={<ProtectedRoute><EvaluationPage /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/report" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
+            
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
+  )
+}
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="h-8 w-8 rounded-full border-2 border-primary-200 border-t-primary-600 animate-spin" />
+    </div>
   )
 }
 

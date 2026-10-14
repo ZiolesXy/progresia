@@ -8,8 +8,6 @@ import { ArrowLeft, Loader2, AlertCircle, User, CheckCircle2, TrendingUp, Printe
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../contexts/AuthContext'
 import { EmptyState } from '../components/ui/EmptyState'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 
 interface Period {
   id: string
@@ -219,6 +217,11 @@ export function ReportPage() {
     setError(null)
 
     try {
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ])
+
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
       

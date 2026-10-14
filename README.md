@@ -1,28 +1,70 @@
-# Aplikasi Progresia
+# Progresia
 
-Aplikasi web untuk membantu mahasiswa mengelola tugas kelompok dan mengevaluasi kontribusi setiap anggota secara transparan, adil, dan berdasarkan bukti pekerjaan.
+Progresia adalah aplikasi web untuk membantu mahasiswa mengelola tugas kelompok, mencatat progres berbasis bukti, dan mengevaluasi kontribusi anggota secara transparan.
 
-## Teknologi
+## Fitur Utama
 
-- **Frontend:** React + TypeScript + Vite
-- **Styling:** Tailwind CSS
-- **Routing:** React Router
-- **Backend & Database:** Supabase (PostgreSQL)
-- **Autentikasi:** Supabase Auth
-- **File Storage:** Supabase Storage
-- **Form Validation:** React Hook Form + Zod
-- **Icons:** Lucide React
-- **Charts:** Recharts
+- Autentikasi pengguna dengan Supabase Auth.
+- Manajemen kelompok dengan kode undangan dan PIN.
+- Dashboard ringkasan kelompok, tugas, dan status pengerjaan.
+- Pembuatan tugas dengan penanggung jawab, prioritas, tenggat waktu, dan status.
+- Riwayat progres tugas dengan upload bukti pekerjaan.
+- Evaluasi kontribusi antarangota per periode.
+- Review dan penyesuaian nilai akhir oleh ketua kelompok.
+- Laporan kontribusi yang dapat dicetak atau diekspor ke PDF.
 
-## Prasyarat
+## Tech Stack
 
-- Node.js v20+ atau v22+
-- npm v10+
-- Akun Supabase
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- Supabase
 
-## Instalasi
+## Instalasi & Menjalankan
 
-1. Clone repositori:
+1. Clone repository dan masuk ke folder proyek.
+
    ```bash
    git clone <repository-url>
-   cd Progresia-app
+   cd progresia
+   ```
+
+2. Install dependency.
+
+   ```bash
+   npm install
+   ```
+
+3. Buat file `.env.local` di root proyek, lalu isi kredensial Supabase.
+
+   ```env
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+   ```
+
+4. Jalankan development server.
+
+   ```bash
+   npm run dev
+   ```
+
+5. Buka URL lokal yang ditampilkan Vite di terminal.
+
+## Setup Database
+
+1. Buat project baru di Supabase atau gunakan project yang sudah ada.
+2. Buka Supabase Dashboard, masuk ke menu **SQL Editor**.
+3. Buka file `MASTER_SETUP.sql` di root proyek ini.
+4. Salin seluruh isi file tersebut ke SQL Editor Supabase.
+5. Jalankan script sampai selesai.
+
+Script `MASTER_SETUP.sql` berisi skema tabel, index, trigger, RPC pendukung, Row Level Security policies, dan bucket storage `progress-files`. Script dibuat idempotent dengan `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, dan `DROP POLICY IF EXISTS`, sehingga aman dijalankan ulang.
+
+## Script NPM
+
+```bash
+npm run dev
+npm run lint
+npm run build
+```
