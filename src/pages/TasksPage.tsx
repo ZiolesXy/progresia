@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { Plus, Filter, Clock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
-import { tasks as allTasks } from '../data/dummy'
+import { Plus, Filter, Clock, CheckCircle2, AlertCircle, Loader2, Users, Lock } from 'lucide-react'
+import { useTasks } from '../hooks/useTasks'
+import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase/client'
+import { CreateTaskModal } from '../components/CreateTaskModal'
 
 type StatusFilter = 'all' | 'todo' | 'in_progress' | 'in_review' | 'done'
 
@@ -20,12 +23,35 @@ const statusOptions: { value: StatusFilter; label: string }[] = [
 export function TasksPage() {
   const { groupId } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { tasks, loading, error } = useTasks(groupId)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [isLeader, setIsLeader] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
-  const groupTasks = allTasks.filter(t => t.groupId === groupId)
-  const filteredTasks = statusFilter === 'all'
-    ? groupTasks
-    : groupTasks.filter(t => t.status === statusFilter)
+  // Cek apakah user adalah ketua kelompok
+  useEffect(() => {
+    if (!groupId || !user) return
+
+    const checkLeader = async () => {
+      const { data, error } = await supabase
+        .from('group_members')
+        .select('role')
+        .eq('group_id', groupId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (!error && data) {
+        setIsLeader(data.role === 'leader')
+      }
+    }
+
+    checkLeader()
+  }, [groupId, user])
+
+  const filteredTasks = statusFilter === 'all' 
+    ? tasks 
+    : tasks.filter(t => t.status === statusFilter)
 
   const statusIcon = {
     todo: AlertCircle,
@@ -54,20 +80,43 @@ export function TasksPage() {
     high: 'Tinggi',
   }
 
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+        </div>
+      </Layout>
+    )
+  }
+
   return (
     <Layout>
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Daftar Tugas</h1>
           <p className="mt-1 text-slate-500">
-            {filteredTasks.length} dari {groupTasks.length} tugas
+            {filteredTasks.length} dari {tasks.length} tugas
           </p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4" />
-          Tambah Tugas
-        </Button>
+        {isLeader ? (
+          <Button onClick={() => setShowCreateModal(true)}>
+            <Plus className="w-4 h-4" />
+            Tambah Tugas
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm text-slate-600">
+            <Lock className="w-4 h-4" />
+            Hanya ketua yang bisa menambah tugas
+          </div>
+        )}
       </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <Card>
         <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2">
@@ -89,16 +138,19 @@ export function TasksPage() {
         </div>
 
         {filteredTasks.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 text-sm">
-            Tidak ada tugas dengan status ini.
+          <div className="text-center py-12">
+            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 text-sm">
+              {tasks.length === 0 ? 'Belum ada tugas di kelompok ini.' : 'Tidak ada tugas dengan status ini.'}
+            </p>
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
             {filteredTasks.map((task) => {
-              const Icon = statusIcon[task.status as keyof typeof statusIcon]
+              const Icon = statusIcon[task.status]
               return (
                 <li key={task.id} className="py-4 cursor-pointer">
-                  <div
+                  <div 
                     onClick={() => navigate(`/groups/${groupId}/tasks/${task.id}`)}
                     className="block hover:bg-slate-50 -mx-5 px-5 py-2 rounded-lg transition-colors"
                   >
@@ -108,19 +160,28 @@ export function TasksPage() {
                           <h3 className="text-base font-semibold text-slate-900 truncate">
                             {task.title}
                           </h3>
-                          <Badge variant={statusColor[task.status as keyof typeof statusColor]} size="sm">
+                          <Badge variant={statusColor[task.status]} size="sm">
                             <Icon className="w-3 h-3 mr-1" />
-                            {statusLabel[task.status as keyof typeof statusLabel]}
+                            {statusLabel[task.status]}
                           </Badge>
                         </div>
-                        <p className="text-sm text-slate-600 line-clamp-2 mb-2">{task.description}</p>
+                        {task.description && (
+                          <p className="text-sm text-slate-600 line-clamp-2 mb-2">{task.description}</p>
+                        )}
                         <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-                          <span>👤 {task.assigneeName}</span>
-                          <span>📅 {new Date(task.deadline).toLocaleDateString('id-ID')}</span>
-                          <span className={`font-medium ${task.priority === 'high' ? 'text-red-600' :
-                              task.priority === 'medium' ? 'text-amber-600' : 'text-slate-500'
-                            }`}>
-                            Prioritas: {priorityLabel[task.priority as keyof typeof priorityLabel]}
+                          {task.assignee ? (
+                            <span>👤 {task.assignee.full_name}</span>
+                          ) : (
+                            <span className="text-amber-600">👤 Belum diassign</span>
+                          )}
+                          {task.deadline && (
+                            <span>📅 {new Date(task.deadline).toLocaleDateString('id-ID')}</span>
+                          )}
+                          <span className={`font-medium ${
+                            task.priority === 'high' ? 'text-red-600' :
+                            task.priority === 'medium' ? 'text-amber-600' : 'text-slate-500'
+                          }`}>
+                            Prioritas: {priorityLabel[task.priority]}
                           </span>
                         </div>
                       </div>
@@ -132,6 +193,12 @@ export function TasksPage() {
           </ul>
         )}
       </Card>
+
+      <CreateTaskModal
+        isOpen={showCreateModal}
+        groupId={groupId!}
+        onClose={() => setShowCreateModal(false)}
+      />
     </Layout>
   )
 }
