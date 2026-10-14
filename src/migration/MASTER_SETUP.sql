@@ -283,7 +283,7 @@ drop policy if exists "groups_select_member" on public.groups;
 create policy "groups_select_member"
 on public.groups for select
 to authenticated
-using (public.is_group_member(id, auth.uid()));
+using (leader_id = auth.uid() or public.is_group_member(id, auth.uid()));
 
 drop policy if exists "groups_insert_own_leader" on public.groups;
 create policy "groups_insert_own_leader"
