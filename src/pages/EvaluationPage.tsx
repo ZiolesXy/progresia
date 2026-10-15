@@ -23,7 +23,7 @@ interface Period {
 
 interface Member {
   user_id: string
-  profiles: { full_name: string; student_id: string } | null
+  profiles: { full_name: string; student_id: string; avatar_url: string | null } | null
 }
 
 interface VoteData {
@@ -91,21 +91,23 @@ export function EvaluationPage() {
         const currentPeriod = periodData && periodData.length > 0 ? (periodData[0] as Period) : null
         setPeriod(currentPeriod)
 
+        // Ambil daftar anggota (termasuk ketua) terlebih dahulu agar foto profil selalu tampil
+        const { data: membersData, error: membersError } = await supabase
+          .from('group_members')
+          .select(`user_id, profiles:user_id(full_name, student_id, avatar_url)`)
+          .eq('group_id', groupId)
+
+        if (membersError) throw membersError
+
+        if (membersData) {
+          const formattedMembers = membersData.map((m: any) => ({
+            user_id: m.user_id,
+            profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles
+          }))
+          setMembers(formattedMembers)
+        }
+
         if (currentPeriod) {
-          const { data: membersData, error: membersError } = await supabase
-            .from('group_members')
-            .select(`user_id, profiles:user_id(full_name, student_id)`)
-            .eq('group_id', groupId)
-
-          if (membersError) throw membersError
-
-          if (membersData) {
-            const formattedMembers = membersData.map((m: any) => ({
-              user_id: m.user_id,
-              profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles
-            }))
-            setMembers(formattedMembers)
-          }
 
           const { data: existingVotes, error: existingVotesError } = await supabase
             .from('contribution_votes')
@@ -548,9 +550,17 @@ export function EvaluationPage() {
                 return (
                   <div key={member.user_id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                        <User className="w-5 h-5 text-primary-600" />
-                      </div>
+                      {member.profiles?.avatar_url ? (
+                        <img
+                          src={member.profiles.avatar_url}
+                          alt={member.profiles?.full_name || 'Avatar'}
+                          className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                          <User className="w-5 h-5 text-primary-600" />
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <h4 className="font-semibold text-slate-900 truncate">{member.profiles?.full_name || 'Anggota'}</h4>
                         <p className="text-xs text-slate-500">{member.profiles?.student_id || '-'}</p>
@@ -600,9 +610,17 @@ export function EvaluationPage() {
                   <div key={member.user_id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                          <User className="w-5 h-5 text-slate-600" />
-                        </div>
+                        {member.profiles?.avatar_url ? (
+                          <img
+                            src={member.profiles.avatar_url}
+                            alt={member.profiles?.full_name || 'Avatar'}
+                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+                            <User className="w-5 h-5 text-slate-600" />
+                          </div>
+                        )}
                         <div>
                           <h4 className="font-semibold text-slate-900">{member.profiles?.full_name || 'Anggota'}</h4>
                           <p className="text-xs text-slate-500">{member.profiles?.student_id || '-'}</p>

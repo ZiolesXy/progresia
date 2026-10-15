@@ -28,6 +28,7 @@ interface Member {
   profiles: {
     full_name: string
     student_id: string
+    avatar_url: string | null
   }
 }
 
@@ -71,7 +72,7 @@ export function GroupDetailPage() {
             id,
             user_id,
             role,
-            profiles:user_id (full_name, student_id)
+            profiles:user_id (full_name, student_id, avatar_url)
           `)
           .eq('group_id', groupId)
 
@@ -212,11 +213,19 @@ export function GroupDetailPage() {
                 {members.map((member) => (
                   <li key={member.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                        <span className="text-primary-700 font-medium text-sm">
-                          {member.profiles?.full_name?.charAt(0) || '?'}
-                        </span>
-                      </div>
+                      {member.profiles?.avatar_url ? (
+                        <img
+                          src={member.profiles.avatar_url}
+                          alt={member.profiles?.full_name || 'Avatar'}
+                          className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-primary-700 font-medium text-sm">
+                            {member.profiles?.full_name?.charAt(0) || '?'}
+                          </span>
+                        </div>
+                      )}
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-900 break-words">{member.profiles?.full_name || 'Anggota'}</p>
                         <p className="text-xs text-slate-500 break-words">{member.profiles?.student_id || '-'}</p>

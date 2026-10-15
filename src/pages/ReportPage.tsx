@@ -21,7 +21,7 @@ interface Period {
 
 interface Member {
   user_id: string
-  profiles: { full_name: string; student_id: string } | null
+  profiles: { full_name: string; student_id: string; avatar_url: string | null } | null
 }
 
 interface EvalResult {
@@ -91,7 +91,7 @@ export function ReportPage() {
         // 3. Ambil daftar anggota
         const { data: membersData, error: membersError } = await supabase
           .from('group_members')
-          .select(`user_id, profiles:user_id(full_name, student_id)`)
+          .select(`user_id, profiles:user_id(full_name, student_id, avatar_url)`)
           .eq('group_id', groupId)
 
         if (membersError) throw membersError
@@ -426,11 +426,19 @@ export function ReportPage() {
                       <tr key={member.user_id} className="border-b border-slate-100 last:border-0">
                         <td className="py-3 px-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-medium text-primary-600">
-                                {member.profiles?.full_name?.charAt(0) || '?'}
-                              </span>
-                            </div>
+                            {member.profiles?.avatar_url ? (
+                              <img
+                                src={member.profiles.avatar_url}
+                                alt={member.profiles?.full_name || 'Avatar'}
+                                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-medium text-primary-600">
+                                  {member.profiles?.full_name?.charAt(0) || '?'}
+                                </span>
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <p className="font-medium text-slate-900 break-words">{member.profiles?.full_name || 'Anggota'}</p>
                               <p className="text-xs text-slate-500 break-words">{member.profiles?.student_id || '-'}</p>
