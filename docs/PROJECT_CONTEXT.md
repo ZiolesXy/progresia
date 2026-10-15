@@ -135,6 +135,21 @@ Semua halaman terproteksi dibungkus `ProtectedRoute` yang mengarahkan ke `/login
 - `pin_hash` → hash PIN kelompok
 - `leader_id` → ketua kelompok
 
+**contribution_votes:**
+- `score`: 1-5 (skala penilaian antarangota)
+- `comment`: opsional, keterangan penilaian
+
+**contribution_reviews:**
+- `adjusted_score`: 1-5 (nilai akhir setelah review ketua, nullable)
+- `review_text`: alasan penyesuaian (wajib jika adjusted_score diisi)
+
+### Tabel Audit & Riwayat
+
+| Tabel | Deskripsi |
+|---|---|
+| `score_audit_log` | Pencatatan semua perubahan nilai oleh ketua (nilai awal, nilai akhir, alasan, waktu) |
+| `task_status_history` | Riwayat perubahan status tugas (otomatis via trigger) |
+
 ## Arsitektur
 
 ### Autentikasi
@@ -155,7 +170,8 @@ Semua halaman terproteksi dibungkus `ProtectedRoute` yang mengarahkan ke `/login
 - Fungsi helper: `is_group_member()`, `is_group_leader()`, `validate_invite_and_pin()`
 
 ### Storage
-- Bucket `progress-files` (public read, authenticated upload)
+- Bucket `progress-files` (**privat**, akses via signed URL)
+- Bucket `avatars` (**privat**, akses via signed URL)
 - File disimpan di Supabase Storage, metadata di `progress_files`
 
 ## Konvensi Kode

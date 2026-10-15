@@ -70,7 +70,7 @@ export function ReportPage() {
           .select('name, description')
           .eq('id', groupId)
           .single()
-        
+
         if (groupError) throw groupError
         if (groupData) {
           setGroupInfo(groupData as GroupInfo)
@@ -103,7 +103,7 @@ export function ReportPage() {
           setMembers(formattedMembers)
         }
 
-        // 4. Hitung rata-rata nilai
+        // 4. Hitung rata-rata nilai (skala 1-5)
         if (currentPeriod) {
           const { data: allVotes, error: votesError } = await supabase
             .from('contribution_votes')
@@ -125,7 +125,7 @@ export function ReportPage() {
             for (const [target_id, val] of Object.entries(grouped)) {
               results[target_id] = {
                 target_id,
-                avg_score: Math.round((val.sum / val.count) * 100) / 100,
+                avg_score: Math.round((val.sum / val.count) * 10) / 10,
                 voter_count: val.count
               }
             }
@@ -137,14 +137,14 @@ export function ReportPage() {
             .from('contribution_reviews')
             .select('target_id, review_text, adjusted_score')
             .eq('period_id', currentPeriod.id)
-          
+
           if (reviewsError) throw reviewsError
           if (reviews) {
             const reviewsMap: Record<string, LeaderReviewData> = {}
             reviews.forEach((r: any) => {
-              reviewsMap[r.target_id] = { 
-                review_text: r.review_text || '', 
-                adjusted_score: r.adjusted_score 
+              reviewsMap[r.target_id] = {
+                review_text: r.review_text || '',
+                adjusted_score: r.adjusted_score
               }
             })
             setLeaderReviews(reviewsMap)
@@ -155,13 +155,13 @@ export function ReportPage() {
             .from('tasks')
             .select('status, deadline')
             .eq('group_id', groupId)
-          
+
           if (tasksError) throw tasksError
           if (tasksData) {
             const total = tasksData.length
             const done = tasksData.filter(t => t.status === 'done').length
             const now = new Date()
-            const overdue = tasksData.filter(t => 
+            const overdue = tasksData.filter(t =>
               t.status !== 'done' && t.deadline && new Date(t.deadline) < now
             ).length
             setTaskStats({ total, done, overdue })
@@ -177,6 +177,33 @@ export function ReportPage() {
     fetchData()
   }, [groupId, user])
 
+  // Skala 1-5: konversi ke huruf mutu
+  const getGrade = (score: number): string => {
+    if (score >= 4.5) return 'A'
+    if (score >= 3.5) return 'B'
+    if (score >= 2.5) return 'C'
+    if (score >= 1.5) return 'D'
+    return 'E'
+  }
+
+  const getGradeColor = (grade: string): string => {
+    switch (grade) {
+      case 'A': return 'bg-green-100 text-green-800 border-green-200'
+      case 'B': return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'C': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'D': return 'bg-orange-100 text-orange-800 border-orange-200'
+      default: return 'bg-red-100 text-red-800 border-red-200'
+    }
+  }
+
+  const getScoreLabel = (score: number): string => {
+    if (score >= 4.5) return 'Sangat Baik'
+    if (score >= 3.5) return 'Baik'
+    if (score >= 2.5) return 'Cukup'
+    if (score >= 1.5) return 'Kurang'
+    return 'Sangat Kurang'
+  }
+
   const getFinalScore = (memberId: string): number => {
     const review = leaderReviews[memberId]
     const result = evalResults[memberId]
@@ -186,27 +213,10 @@ export function ReportPage() {
     return result ? result.avg_score : 0
   }
 
-  const getGrade = (score: number): string => {
-    if (score >= 85) return 'A'
-    if (score >= 70) return 'B'
-    if (score >= 60) return 'C'
-    return 'D'
-  }
-
-  const getGradeColor = (grade: string): string => {
-    switch (grade) {
-      case 'A': return 'bg-green-100 text-green-800 border-green-200'
-      case 'B': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'C': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      default: return 'bg-red-100 text-red-800 border-red-200'
-    }
-  }
-
   const handlePrint = () => {
     window.print()
   }
 
-  // FUNGSI EKSPOR PDF YANG BENAR-BENAR BERFUNGSI
   const handleExportPDF = async () => {
     if (!period || !groupInfo) {
       setError('Data tidak lengkap untuk mengekspor PDF.')
@@ -224,59 +234,59 @@ export function ReportPage() {
 
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
-      
+
       // Header
       doc.setFontSize(18)
       doc.setFont('helvetica', 'bold')
       doc.text('LAPORAN KONTRIBUSI KELOMPOK', pageWidth / 2, 20, { align: 'center' })
-      
+
       doc.setFontSize(12)
       doc.setFont('helvetica', 'normal')
       doc.text(groupInfo.name, pageWidth / 2, 30, { align: 'center' })
-      
+
       doc.setFontSize(10)
       doc.text(`Periode: ${period.title}`, pageWidth / 2, 38, { align: 'center' })
       doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`, pageWidth / 2, 44, { align: 'center' })
-      
+
       // Statistik Ringkas
       doc.setFontSize(11)
       doc.setFont('helvetica', 'bold')
       doc.text('Ringkasan:', 14, 58)
-      
+
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(10)
       doc.text(`Total Anggota: ${members.length}`, 14, 65)
       doc.text(`Tugas Selesai: ${taskStats.done}/${taskStats.total}`, 14, 71)
       doc.text(`Tugas Terlambat: ${taskStats.overdue}`, 14, 77)
-      
-      const avgScore = members.length > 0 
-        ? Math.round(members.reduce((sum, m) => sum + getFinalScore(m.user_id), 0) / members.length * 100) / 100
+
+      const avgScore = members.length > 0
+        ? Math.round(members.reduce((sum, m) => sum + getFinalScore(m.user_id), 0) / members.length * 10) / 10
         : 0
-      doc.text(`Rata-rata Skor Kelompok: ${avgScore.toFixed(2)}`, 14, 83)
-      
+      doc.text(`Rata-rata Skor Kelompok: ${avgScore.toFixed(1)} / 5`, 14, 83)
+
       // Tabel Nilai Anggota
       doc.setFontSize(11)
       doc.setFont('helvetica', 'bold')
-      doc.text('Detail Nilai Anggota:', 14, 95)
-      
+      doc.text('Detail Nilai Anggota (Skala 1-5):', 14, 95)
+
       const tableData = members.map((member, index) => {
         const result = evalResults[member.user_id]
         const review = leaderReviews[member.user_id]
         const finalScore = getFinalScore(member.user_id)
         const grade = getGrade(finalScore)
-        const initialScore = result ? result.avg_score.toFixed(2) : '-'
-        
+        const initialScore = result ? result.avg_score.toFixed(1) : '-'
+
         return [
           index + 1,
           member.profiles?.full_name || 'Anggota',
           member.profiles?.student_id || '-',
           initialScore,
-          finalScore.toFixed(2),
+          finalScore.toFixed(1),
           grade,
           review?.review_text || 'Tidak ada catatan'
         ]
       })
-      
+
       autoTable(doc, {
         startY: 100,
         head: [['No', 'Nama', 'NIM', 'Nilai Awal', 'Nilai Akhir', 'Grade', 'Catatan']],
@@ -294,18 +304,19 @@ export function ReportPage() {
           6: { cellWidth: 55 }
         }
       })
-      
+
       // Footer
       const finalY = (doc as any).lastAutoTable.finalY || 150
       doc.setFontSize(9)
       doc.setFont('helvetica', 'italic')
-      doc.text('Catatan: Nilai akhir merupakan kombinasi dari penilaian antarteman dan review ketua.', 14, finalY + 15)
+      doc.text('Catatan: Nilai akhir merupakan kombinasi dari penilaian antarteman (skala 1-5) dan review ketua.', 14, finalY + 15)
       doc.text('Laporan ini digenerate otomatis oleh sistem Progresia.', 14, finalY + 20)
-      
+      doc.text('Skor bukan ukuran objektif sempurna atas kerja seseorang.', 14, finalY + 25)
+
       // Simpan PDF
       const fileName = `Laporan_${groupInfo.name.replace(/\s+/g, '_')}_${period.title.replace(/\s+/g, '_')}.pdf`
       doc.save(fileName)
-      
+
     } catch (err: any) {
       console.error('PDF Export Error:', err)
       setError(err.message || 'Gagal mengekspor PDF')
@@ -324,8 +335,8 @@ export function ReportPage() {
     )
   }
 
-  const avgScore = members.length > 0 
-    ? Math.round(members.reduce((sum, m) => sum + getFinalScore(m.user_id), 0) / members.length * 100) / 100
+  const avgScore = members.length > 0
+    ? Math.round(members.reduce((sum, m) => sum + getFinalScore(m.user_id), 0) / members.length * 10) / 10
     : 0
 
   return (
@@ -345,9 +356,9 @@ export function ReportPage() {
             <Button variant="outline" size="sm" onClick={handlePrint}>
               <Printer className="w-4 h-4 mr-2" /> Cetak
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleExportPDF}
               isLoading={exporting}
             >
@@ -394,15 +405,15 @@ export function ReportPage() {
                 <TrendingUp className="w-5 h-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-900">{avgScore.toFixed(2)}</p>
-                <p className="text-xs text-slate-500">Rata-rata Skor</p>
+                <p className="text-2xl font-bold text-slate-900">{avgScore.toFixed(1)}</p>
+                <p className="text-xs text-slate-500">Rata-rata Skor (1-5)</p>
               </div>
             </div>
           </Card>
         </div>
 
         {/* Tabel Ringkasan Nilai */}
-        <Card title="Ringkasan Nilai Akhir" description="Berdasarkan evaluasi antarteman dan review ketua">
+        <Card title="Ringkasan Nilai Akhir" description="Berdasarkan evaluasi antarteman (skala 1-5) dan review ketua">
           {period && members.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
@@ -421,7 +432,7 @@ export function ReportPage() {
                     const finalScore = getFinalScore(member.user_id)
                     const grade = getGrade(finalScore)
                     const hasAdjustment = review?.adjusted_score !== null && review?.adjusted_score !== undefined
-                    
+
                     return (
                       <tr key={member.user_id} className="border-b border-slate-100 last:border-0">
                         <td className="py-3 px-2">
@@ -447,12 +458,12 @@ export function ReportPage() {
                         </td>
                         <td className="py-3 px-2 text-center">
                           <span className="font-medium text-slate-700">
-                            {result ? result.avg_score.toFixed(2) : '-'}
+                            {result ? result.avg_score.toFixed(1) : '-'}
                           </span>
                         </td>
                         <td className="py-3 px-2 text-center">
                           <Badge className={getGradeColor(grade)} size="sm">
-                            {finalScore.toFixed(2)}
+                            {finalScore.toFixed(1)}
                           </Badge>
                         </td>
                         <td className="py-3 px-2">
@@ -479,10 +490,14 @@ export function ReportPage() {
         <Card title="Catatan Penting">
           <div className="flex items-start gap-2 text-sm text-slate-600">
             <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <p>
-              Nilai akhir merupakan kombinasi dari penilaian antarteman (subjektif) dan review ketua berdasarkan bukti pekerjaan (faktual). 
-              Skor ini bukan ukuran objektif sempurna atas kerja seseorang.
-            </p>
+            <div className="space-y-1">
+              <p>
+                Nilai akhir merupakan kombinasi dari penilaian antarteman (subjektif, skala 1-5) dan review ketua berdasarkan bukti pekerjaan (faktual).
+              </p>
+              <p className="font-medium text-slate-500">
+                Skor ini bukan ukuran objektif sempurna atas kerja seseorang.
+              </p>
+            </div>
           </div>
         </Card>
       </div>

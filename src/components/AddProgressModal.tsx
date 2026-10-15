@@ -42,7 +42,7 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
           .order('created_at', { ascending: false })
           .limit(1)
           .single()
-        
+
         setLastProgress(data?.progress_percentage ?? 0)
       }
       fetchLastProgress()
@@ -51,17 +51,31 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
 
   if (!isOpen) return null
 
-  const handleClose = () => { 
+  const handleClose = () => {
     reset()
     setError(null)
     setSelectedFile(null)
     onClose()
-    window.location.reload() 
+    window.location.reload()
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
+      // Validasi: hanya izinkan tipe file tertentu
+      const allowedTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg',
+        'image/png',
+        'application/zip',
+      ]
+      if (!allowedTypes.includes(file.type)) {
+        setError('Tipe file tidak didukung. Gunakan PDF, DOC, DOCX, JPG, PNG, atau ZIP.')
+        setSelectedFile(null)
+        return
+      }
       if (file.size > 5 * 1024 * 1024) {
         setError('Ukuran file maksimal 5MB')
         setSelectedFile(null)
@@ -90,50 +104,46 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
     setError(null)
 
     try {
-      let fileUrl = null
+      let filePath = null
       let fileName = null
       let fileType = null
 
       if (selectedFile) {
         const fileExt = selectedFile.name.split('.').pop()
-        // oxlint-disable react/purity
-        const filePath = `${taskId}/${Date.now()}.${fileExt}`
-        
+        // Path: <task_id>/<timestamp>.<ext>
+        filePath = `${taskId}/${Date.now()}.${fileExt}`
+
         const { error: uploadError } = await supabase.storage
           .from('progress-files')
           .upload(filePath, selectedFile)
 
         if (uploadError) throw uploadError
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('progress-files')
-          .getPublicUrl(filePath)
-
-        fileUrl = publicUrl
+        // Bucket sekarang private, simpan path storage (bukan public URL)
         fileName = selectedFile.name
         fileType = selectedFile.type
       }
 
       const { data: progressData, error: progressError } = await supabase
         .from('progress_updates')
-        .insert({ 
-          task_id: taskId, 
-          user_id: user.id, 
-          description: data.description, 
-          progress_percentage: percentage 
+        .insert({
+          task_id: taskId,
+          user_id: user.id,
+          description: data.description,
+          progress_percentage: percentage
         })
         .select('id')
         .single()
 
       if (progressError) throw progressError
 
-      if (fileUrl && progressData) {
+      if (filePath && progressData) {
         const { error: fileError } = await supabase
           .from('progress_files')
-          .insert({ 
-            progress_update_id: progressData.id, 
+          .insert({
+            progress_update_id: progressData.id,
             task_id: taskId,
-            file_path: fileUrl,
+            file_path: filePath,
             file_name: fileName,
             file_type: fileType,
             uploaded_by: user.id
@@ -155,7 +165,7 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
         <button onClick={handleClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
-        
+
         <div className="mb-6">
           <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center mb-3">
             <TrendingUp className="w-5 h-5 text-primary-600" />
@@ -165,21 +175,21 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <Input 
-            label="Deskripsi Progres" 
-            placeholder="Contoh: Selesai membuat komponen Navbar..." 
-            error={errors.description?.message} 
-            {...register('description')} 
+          <Input
+            label="Deskripsi Progres"
+            placeholder="Contoh: Selesai membuat komponen Navbar..."
+            error={errors.description?.message}
+            {...register('description')}
           />
-          <Input 
-            label="Persentase Selesai (0-100)" 
-            type="number" 
-            placeholder="50" 
-            error={errors.progress_percentage?.message} 
-            {...register('progress_percentage')} 
+          <Input
+            label="Persentase Selesai (0-100)"
+            type="number"
+            placeholder="50"
+            error={errors.progress_percentage?.message}
+            {...register('progress_percentage')}
           />
 
-          {/* Input File - PERBAIKAN DESAIN */}
+          {/* Input File - Max 5MB, tipe terbatas */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Bukti Pekerjaan (Opsional, Max 5MB)</label>
             <div className="relative">
@@ -188,23 +198,24 @@ export function AddProgressModal({ isOpen, taskId, onClose }: AddProgressModalPr
                 <span className="text-sm text-slate-600 truncate flex-1 min-w-0">
                   {selectedFile ? selectedFile.name : 'Pilih File...'}
                 </span>
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  onChange={handleFileChange} 
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip" 
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileChange}
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
                 />
               </label>
               {selectedFile && (
-                <button 
-                  type="button" 
-                  onClick={() => setSelectedFile(null)} 
+                <button
+                  type="button"
+                  onClick={() => setSelectedFile(null)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 hover:text-red-700 p-1"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
+            <p className="mt-1 text-xs text-slate-400">PDF, DOC, DOCX, JPG, PNG, ZIP. File disimpan privat.</p>
           </div>
 
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}

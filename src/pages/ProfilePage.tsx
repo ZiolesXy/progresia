@@ -60,7 +60,14 @@ export function ProfilePage() {
         setError('Gagal memuat profil.')
       } else {
         setProfile(data)
-        setAvatarUrl(data.avatar_url)
+        // avatar_url sekarang adalah path storage, bukan public URL
+        // Kita perlu signed URL untuk menampilkannya
+        if (data.avatar_url) {
+          const { data: signedUrlData } = await supabase.storage
+            .from('avatars')
+            .createSignedUrl(data.avatar_url, 3600)
+          setAvatarUrl(signedUrlData?.signedUrl || null)
+        }
         reset({
           fullName: data.full_name ?? '',
           studentId: data.student_id ?? '',
@@ -102,10 +109,10 @@ export function ProfilePage() {
   }
 
   const uploadAvatar = async (): Promise<string | null> => {
-    if (!avatarFile) return avatarUrl
+    if (!avatarFile) return profile?.avatar_url || null
 
     setUploadingAvatar(true)
-    // Path: avatars/<user_id>/<timestamp>-<filename>
+    // Path: <user_id>/<timestamp>-<filename>
     const safeName = avatarFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const path = `${user.id}/${Date.now()}-${safeName}`
 
@@ -118,9 +125,9 @@ export function ProfilePage() {
       throw new Error('Gagal mengunggah avatar. Coba lagi.')
     }
 
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
     setUploadingAvatar(false)
-    return publicUrl
+    // Return path storage (bucket sekarang private)
+    return path
   }
 
   const onSubmit = async (data: ProfileFormData) => {
@@ -129,14 +136,14 @@ export function ProfilePage() {
     setSuccess(false)
 
     try {
-      const publicUrl = await uploadAvatar()
+      const avatarPath = await uploadAvatar()
 
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           full_name: data.fullName,
           student_id: data.studentId,
-          avatar_url: publicUrl,
+          avatar_url: avatarPath,
         })
         .eq('id', user.id)
 
@@ -151,9 +158,17 @@ export function ProfilePage() {
         ...prev,
         full_name: data.fullName,
         student_id: data.studentId,
-        avatar_url: publicUrl,
+        avatar_url: avatarPath,
       } : prev)
-      setAvatarUrl(publicUrl)
+
+      // Update avatar URL untuk display
+      if (avatarPath) {
+        const { data: signedUrlData } = await supabase.storage
+          .from('avatars')
+          .createSignedUrl(avatarPath, 3600)
+        setAvatarUrl(signedUrlData?.signedUrl || null)
+      }
+
       setAvatarFile(null)
       setSuccess(true)
     } catch (err) {

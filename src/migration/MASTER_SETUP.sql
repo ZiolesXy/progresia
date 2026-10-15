@@ -1,7 +1,14 @@
--- Progresia Master Database Setup
+-- ============================================================
+-- Progresia Master Database Setup (LENGKAP)
 -- Safe to run multiple times on Supabase SQL Editor.
+-- Berisi: schema awal + perbaikan keamanan + audit log + constraints
+-- ============================================================
 
 create extension if not exists "pgcrypto";
+
+-- ============================================================
+-- TABEL UTAMA
+-- ============================================================
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -86,7 +93,7 @@ create table if not exists public.contribution_votes (
   group_id uuid not null references public.groups(id) on delete cascade,
   voter_id uuid not null references public.profiles(id) on delete cascade,
   target_id uuid not null references public.profiles(id) on delete cascade,
-  score integer not null check (score between 0 and 100),
+  score integer not null check (score between 1 and 5),
   comment text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -101,11 +108,44 @@ create table if not exists public.contribution_reviews (
   reviewer_id uuid not null references public.profiles(id) on delete cascade,
   target_id uuid not null references public.profiles(id) on delete cascade,
   review_text text,
-  adjusted_score integer check (adjusted_score between 0 and 100),
+  adjusted_score integer check (adjusted_score between 1 and 5),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (period_id, reviewer_id, target_id)
+  unique (period_id, reviewer_id, target_id),
+  constraint contribution_reviews_reason_required check (
+    (adjusted_score is null)
+    or (review_text is not null and length(trim(review_text)) > 0)
+  )
 );
+
+-- ============================================================
+-- TABEL AUDIT LOG
+-- ============================================================
+
+create table if not exists public.score_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  period_id uuid not null references public.contribution_periods(id) on delete cascade,
+  group_id uuid not null references public.groups(id) on delete cascade,
+  reviewer_id uuid not null references public.profiles(id) on delete cascade,
+  target_id uuid not null references public.profiles(id) on delete cascade,
+  previous_score integer,
+  new_score integer not null check (new_score between 1 and 5),
+  reason text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.task_status_history (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  changed_by uuid not null references public.profiles(id) on delete cascade,
+  old_status text not null,
+  new_status text not null,
+  created_at timestamptz not null default now()
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
 
 create index if not exists idx_groups_leader_id on public.groups(leader_id);
 create index if not exists idx_groups_invite_code on public.groups(invite_code);
@@ -127,6 +167,19 @@ create index if not exists idx_contribution_reviews_period_id on public.contribu
 create index if not exists idx_contribution_reviews_group_id on public.contribution_reviews(group_id);
 create index if not exists idx_contribution_reviews_reviewer_id on public.contribution_reviews(reviewer_id);
 create index if not exists idx_contribution_reviews_target_id on public.contribution_reviews(target_id);
+create index if not exists idx_score_audit_log_period on public.score_audit_log(period_id);
+create index if not exists idx_score_audit_log_group on public.score_audit_log(group_id);
+create index if not exists idx_score_audit_log_target on public.score_audit_log(target_id);
+create index if not exists idx_task_status_history_task on public.task_status_history(task_id);
+
+-- Unique partial index: hanya boleh ada 1 leader per grup
+create unique index if not exists idx_group_members_one_leader
+on public.group_members(group_id)
+where role = 'leader';
+
+-- ============================================================
+-- TRIGGERS: UPDATED_AT
+-- ============================================================
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -168,6 +221,10 @@ create trigger trg_contribution_reviews_updated_at
 before update on public.contribution_reviews
 for each row execute function public.set_updated_at();
 
+-- ============================================================
+-- TRIGGER: HANDLE NEW USER (auto-create profile)
+-- ============================================================
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -195,6 +252,34 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
+
+-- ============================================================
+-- TRIGGER: TASK STATUS HISTORY (auto-catat perubahan status)
+-- ============================================================
+
+create or replace function public.log_task_status_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.status is distinct from new.status then
+    insert into public.task_status_history (task_id, changed_by, old_status, new_status)
+    values (new.id, auth.uid(), old.status, new.status);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_task_status_history on public.tasks;
+create trigger trg_task_status_history
+  after update of status on public.tasks
+  for each row execute function public.log_task_status_change();
+
+-- ============================================================
+-- HELPER FUNCTIONS
+-- ============================================================
 
 create or replace function public.is_group_member(p_group_id uuid, p_user_id uuid default auth.uid())
 returns boolean
@@ -241,6 +326,10 @@ as $$
   limit 1;
 $$;
 
+-- ============================================================
+-- ROW LEVEL SECURITY
+-- ============================================================
+
 alter table public.profiles enable row level security;
 alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
@@ -250,6 +339,12 @@ alter table public.progress_files enable row level security;
 alter table public.contribution_periods enable row level security;
 alter table public.contribution_votes enable row level security;
 alter table public.contribution_reviews enable row level security;
+alter table public.score_audit_log enable row level security;
+alter table public.task_status_history enable row level security;
+
+-- ============================================================
+-- RLS POLICIES: PROFILES
+-- ============================================================
 
 drop policy if exists "profiles_select_own_or_groupmates" on public.profiles;
 create policy "profiles_select_own_or_groupmates"
@@ -279,6 +374,10 @@ to authenticated
 using (id = auth.uid())
 with check (id = auth.uid());
 
+-- ============================================================
+-- RLS POLICIES: GROUPS
+-- ============================================================
+
 drop policy if exists "groups_select_member" on public.groups;
 create policy "groups_select_member"
 on public.groups for select
@@ -303,6 +402,10 @@ create policy "groups_delete_leader"
 on public.groups for delete
 to authenticated
 using (public.is_group_leader(id, auth.uid()));
+
+-- ============================================================
+-- RLS POLICIES: GROUP MEMBERS
+-- ============================================================
 
 drop policy if exists "group_members_select_member" on public.group_members;
 create policy "group_members_select_member"
@@ -329,6 +432,10 @@ on public.group_members for delete
 to authenticated
 using (user_id = auth.uid() or public.is_group_leader(group_id, auth.uid()));
 
+-- ============================================================
+-- RLS POLICIES: TASKS
+-- ============================================================
+
 drop policy if exists "tasks_select_member" on public.tasks;
 create policy "tasks_select_member"
 on public.tasks for select
@@ -353,6 +460,10 @@ create policy "tasks_delete_leader"
 on public.tasks for delete
 to authenticated
 using (public.is_group_leader(group_id, auth.uid()));
+
+-- ============================================================
+-- RLS POLICIES: PROGRESS UPDATES (append-only, no update/delete)
+-- ============================================================
 
 drop policy if exists "progress_updates_select_member" on public.progress_updates;
 create policy "progress_updates_select_member"
@@ -379,25 +490,9 @@ with check (
   )
 );
 
-drop policy if exists "progress_updates_update_owner" on public.progress_updates;
-create policy "progress_updates_update_owner"
-on public.progress_updates for update
-to authenticated
-using (user_id = auth.uid())
-with check (user_id = auth.uid());
-
-drop policy if exists "progress_updates_delete_owner_or_leader" on public.progress_updates;
-create policy "progress_updates_delete_owner_or_leader"
-on public.progress_updates for delete
-to authenticated
-using (
-  user_id = auth.uid()
-  or exists (
-    select 1 from public.tasks t
-    where t.id = progress_updates.task_id
-      and public.is_group_leader(t.group_id, auth.uid())
-  )
-);
+-- ============================================================
+-- RLS POLICIES: PROGRESS FILES (no delete)
+-- ============================================================
 
 drop policy if exists "progress_files_select_member" on public.progress_files;
 create policy "progress_files_select_member"
@@ -424,18 +519,9 @@ with check (
   )
 );
 
-drop policy if exists "progress_files_delete_uploader_or_leader" on public.progress_files;
-create policy "progress_files_delete_uploader_or_leader"
-on public.progress_files for delete
-to authenticated
-using (
-  uploaded_by = auth.uid()
-  or exists (
-    select 1 from public.tasks t
-    where t.id = progress_files.task_id
-      and public.is_group_leader(t.group_id, auth.uid())
-  )
-);
+-- ============================================================
+-- RLS POLICIES: CONTRIBUTION PERIODS
+-- ============================================================
 
 drop policy if exists "contribution_periods_select_member" on public.contribution_periods;
 create policy "contribution_periods_select_member"
@@ -456,6 +542,10 @@ to authenticated
 using (public.is_group_leader(group_id, auth.uid()))
 with check (public.is_group_leader(group_id, auth.uid()));
 
+-- ============================================================
+-- RLS POLICIES: CONTRIBUTION VOTES (hanya saat periode open)
+-- ============================================================
+
 drop policy if exists "contribution_votes_select_member" on public.contribution_votes;
 create policy "contribution_votes_select_member"
 on public.contribution_votes for select
@@ -475,18 +565,36 @@ with check (
     where gm.group_id = contribution_votes.group_id
       and gm.user_id = contribution_votes.target_id
   )
+  and exists (
+    select 1 from public.contribution_periods cp
+    where cp.id = period_id
+      and cp.status = 'open'
+  )
 );
 
 drop policy if exists "contribution_votes_update_voter" on public.contribution_votes;
 create policy "contribution_votes_update_voter"
 on public.contribution_votes for update
 to authenticated
-using (voter_id = auth.uid())
+using (
+  voter_id = auth.uid()
+  and voter_id <> target_id
+  and public.is_group_member(group_id, auth.uid())
+  and exists (
+    select 1 from public.contribution_periods cp
+    where cp.id = period_id
+      and cp.status = 'open'
+  )
+)
 with check (
   voter_id = auth.uid()
   and voter_id <> target_id
   and public.is_group_member(group_id, auth.uid())
 );
+
+-- ============================================================
+-- RLS POLICIES: CONTRIBUTION REVIEWS
+-- ============================================================
 
 drop policy if exists "contribution_reviews_select_member" on public.contribution_reviews;
 create policy "contribution_reviews_select_member"
@@ -507,21 +615,62 @@ to authenticated
 using (reviewer_id = auth.uid() and public.is_group_leader(group_id, auth.uid()))
 with check (reviewer_id = auth.uid() and public.is_group_leader(group_id, auth.uid()));
 
+-- ============================================================
+-- RLS POLICIES: SCORE AUDIT LOG
+-- ============================================================
+
+drop policy if exists "score_audit_log_select_member" on public.score_audit_log;
+create policy "score_audit_log_select_member"
+on public.score_audit_log for select
+to authenticated
+using (public.is_group_member(group_id, auth.uid()));
+
+-- ============================================================
+-- RLS POLICIES: TASK STATUS HISTORY
+-- ============================================================
+
+drop policy if exists "task_status_history_select_member" on public.task_status_history;
+create policy "task_status_history_select_member"
+on public.task_status_history for select
+to authenticated
+using (
+  exists (
+    select 1 from public.tasks t
+    where t.id = task_status_history.task_id
+      and public.is_group_member(t.group_id, auth.uid())
+  )
+);
+
+-- ============================================================
+-- STORAGE BUCKETS (PRIVATE)
+-- ============================================================
+
 insert into storage.buckets (id, name, public)
-values ('progress-files', 'progress-files', true)
+values ('progress-files', 'progress-files', false)
 on conflict (id) do update set public = excluded.public;
 
 insert into storage.buckets (id, name, public)
-values ('avatars', 'avatars', true)
+values ('avatars', 'avatars', false)
 on conflict (id) do update set public = excluded.public;
 
-drop policy if exists "progress_files_storage_select_public" on storage.objects;
-create policy "progress_files_storage_select_public"
+-- ============================================================
+-- STORAGE POLICIES: PROGRESS FILES (private, member-only)
+-- ============================================================
+
+drop policy if exists "progress_files_storage_select_member" on storage.objects;
+create policy "progress_files_storage_select_member"
 on storage.objects for select
-to public
-using (bucket_id = 'progress-files');
+to authenticated
+using (
+  bucket_id = 'progress-files'
+  and exists (
+    select 1
+    from public.tasks t
+    where t.id::text = (storage.foldername(name))[1]
+      and public.is_group_member(t.group_id, auth.uid())
+  )
+);
 
--- Upload hanya ke folder <task_id> yang valid dan hanya untuk anggota grup terkait
 drop policy if exists "progress_files_storage_insert_authenticated" on storage.objects;
 create policy "progress_files_storage_insert_authenticated"
 on storage.objects for insert
@@ -532,6 +681,7 @@ with check (
     select 1
     from public.tasks t
     where t.id::text = (storage.foldername(name))[1]
+      and public.is_group_member(t.group_id, auth.uid())
   )
 );
 
@@ -548,12 +698,28 @@ on storage.objects for delete
 to authenticated
 using (bucket_id = 'progress-files' and owner = auth.uid());
 
--- Bucket avatar: publik read, upload/update/delete hanya untuk folder <user_id> sendiri
-drop policy if exists "avatars_storage_select_public" on storage.objects;
-create policy "avatars_storage_select_public"
+-- ============================================================
+-- STORAGE POLICIES: AVATARS (private, self or groupmate)
+-- ============================================================
+
+drop policy if exists "avatars_storage_select_member" on storage.objects;
+create policy "avatars_storage_select_member"
 on storage.objects for select
-to public
-using (bucket_id = 'avatars');
+to authenticated
+using (
+  bucket_id = 'avatars'
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or exists (
+      select 1
+      from public.group_members mine
+      join public.group_members theirs
+        on theirs.group_id = mine.group_id
+      where mine.user_id = auth.uid()
+        and theirs.user_id::text = (storage.foldername(name))[1]
+    )
+  )
+);
 
 drop policy if exists "avatars_storage_insert_authenticated" on storage.objects;
 create policy "avatars_storage_insert_authenticated"
@@ -576,3 +742,7 @@ create policy "avatars_storage_delete_owner"
 on storage.objects for delete
 to authenticated
 using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================
+-- SELESAI
+-- ============================================================

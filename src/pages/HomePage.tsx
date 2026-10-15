@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { Users, CheckCircle2, Clock, AlertCircle, Loader2, ClipboardList } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -41,6 +42,8 @@ const priorityBadgeClass = (priority: TaskSummary['priority']) =>
 
 const priorityLabel = (priority: TaskSummary['priority']) =>
   priority === 'high' ? 'Tinggi' : priority === 'medium' ? 'Sedang' : 'Rendah'
+
+const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export function HomePage() {
   const { user } = useAuth()
@@ -184,6 +187,21 @@ export function HomePage() {
     { label: 'Belum Dimulai', value: tasks.filter(t => t.status === 'todo').length, icon: AlertCircle, color: 'text-slate-600 bg-slate-100' },
   ]
 
+  // Data untuk chart status tugas
+  const statusChartData = [
+    { name: 'Selesai', value: tasks.filter(t => t.status === 'done').length },
+    { name: 'Dikerjakan', value: tasks.filter(t => t.status === 'in_progress').length },
+    { name: 'Review', value: tasks.filter(t => t.status === 'in_review').length },
+    { name: 'Belum', value: tasks.filter(t => t.status === 'todo').length },
+  ]
+
+  // Data untuk chart prioritas
+  const priorityChartData = [
+    { name: 'Tinggi', value: tasks.filter(t => t.priority === 'high').length },
+    { name: 'Sedang', value: tasks.filter(t => t.priority === 'medium').length },
+    { name: 'Rendah', value: tasks.filter(t => t.priority === 'low').length },
+  ]
+
   if (loading) {
     return (
       <Layout>
@@ -223,6 +241,48 @@ export function HomePage() {
           </Card>
         ))}
       </div>
+
+      {/* Grafik Statistik */}
+      {tasks.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <Card title="Status Tugas" description="Distribusi status seluruh tugas">
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={70}
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {statusChartData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+          <Card title="Prioritas Tugas" description="Jumlah tugas per tingkat prioritas">
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={priorityChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card title="Tugas Mendatang" description="Prioritas, lalu tenggat terdekat">

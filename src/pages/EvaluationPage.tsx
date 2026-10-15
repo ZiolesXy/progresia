@@ -4,7 +4,6 @@ import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
-import { Input } from '../components/ui/Input'
 import { ArrowLeft, Calendar, CheckCircle2, XCircle, Loader2, Lock, Unlock, AlertCircle, User, Save, Star, MessageSquare, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -40,6 +39,15 @@ interface EvalResult {
 interface LeaderReviewData {
   review_text: string
   adjusted_score: number | null
+}
+
+// Kriteria skala 1-5
+const scoreCriteria: Record<number, { label: string; description: string }> = {
+  1: { label: 'Sangat Kurang', description: 'Tidak berkontribusi / menghambat' },
+  2: { label: 'Kurang', description: 'Kontribusi minimal, sering tidak aktif' },
+  3: { label: 'Cukup', description: 'Berkontribusi sesuai tugas, kadang perlu diingatkan' },
+  4: { label: 'Baik', description: 'Aktif dan kontribusi baik, kadang inisiatif' },
+  5: { label: 'Sangat Baik', description: 'Sangat aktif, inisiatif, membantu anggota lain' },
 }
 
 export function EvaluationPage() {
@@ -91,7 +99,7 @@ export function EvaluationPage() {
         const currentPeriod = periodData && periodData.length > 0 ? (periodData[0] as Period) : null
         setPeriod(currentPeriod)
 
-        // Ambil daftar anggota (termasuk ketua) terlebih dahulu agar foto profil selalu tampil
+        // Ambil daftar anggota (termasuk ketua)
         const { data: membersData, error: membersError } = await supabase
           .from('group_members')
           .select(`user_id, profiles:user_id(full_name, student_id, avatar_url)`)
@@ -146,7 +154,7 @@ export function EvaluationPage() {
             for (const [target_id, val] of Object.entries(grouped)) {
               results[target_id] = {
                 target_id,
-                avg_score: Math.round(val.sum / val.count),
+                avg_score: Math.round((val.sum / val.count) * 10) / 10,
                 voter_count: val.count
               }
             }
@@ -159,15 +167,15 @@ export function EvaluationPage() {
               .select('target_id, review_text, adjusted_score')
               .eq('period_id', currentPeriod.id)
               .eq('reviewer_id', user.id)
-            
+
             if (reviewsError) throw reviewsError
-            
+
             if (reviews) {
               const reviewsMap: Record<string, LeaderReviewData> = {}
               reviews.forEach((r: any) => {
-                reviewsMap[r.target_id] = { 
-                  review_text: r.review_text || '', 
-                  adjusted_score: r.adjusted_score 
+                reviewsMap[r.target_id] = {
+                  review_text: r.review_text || '',
+                  adjusted_score: r.adjusted_score
                 }
               })
               setLeaderReviews(reviewsMap)
@@ -259,14 +267,13 @@ export function EvaluationPage() {
     }
   }
 
-  // BARU: Handle Finalisasi Periode
   const handleFinalizePeriod = async () => {
     if (!period) return
-    
+
     const confirmFinalize = window.confirm(
       'Apakah Anda yakin ingin memfinalisasi periode ini? Semua nilai akan terkunci permanen dan tidak dapat diubah lagi.'
     )
-    
+
     if (!confirmFinalize) return
 
     setActionLoading(true)
@@ -314,8 +321,8 @@ export function EvaluationPage() {
           setSavingVotes(false)
           return
         }
-        if (voteData.score < 0 || voteData.score > 100) {
-          setError(`Nilai untuk anggota harus antara 0 - 100.`)
+        if (voteData.score < 1 || voteData.score > 5) {
+          setError(`Nilai untuk anggota harus antara 1 - 5.`)
           setSavingVotes(false)
           return
         }
@@ -335,12 +342,12 @@ export function EvaluationPage() {
       }
       setSuccess('Penilaian berhasil disimpan!')
       window.scrollTo({ top: 0, behavior: 'smooth' })
-      
+
       const { data: allVotes } = await supabase
         .from('contribution_votes')
         .select('target_id, score')
         .eq('period_id', period.id)
-      
+
       const results: Record<string, EvalResult> = {}
       if (allVotes && Array.isArray(allVotes)) {
         const grouped = allVotes.reduce((acc: Record<string, { sum: number; count: number }>, vote: any) => {
@@ -350,7 +357,7 @@ export function EvaluationPage() {
           return acc
         }, {})
         for (const [target_id, val] of Object.entries(grouped)) {
-          results[target_id] = { target_id, avg_score: Math.round(val.sum / val.count), voter_count: val.count }
+          results[target_id] = { target_id, avg_score: Math.round((val.sum / val.count) * 10) / 10, voter_count: val.count }
         }
       }
       setEvalResults(results)
@@ -373,6 +380,18 @@ export function EvaluationPage() {
 
     const reviewData = leaderReviews[targetId] || { review_text: '', adjusted_score: null }
 
+    // Validasi: jika nilai disesuaikan (berbeda dari rata-rata), alasan wajib diisi
+    const currentAvg = evalResults[targetId]?.avg_score
+    if (reviewData.adjusted_score !== null && reviewData.adjusted_score !== undefined) {
+      if (currentAvg !== undefined && reviewData.adjusted_score !== Math.round(currentAvg * 10) / 10) {
+        if (!reviewData.review_text || reviewData.review_text.trim().length === 0) {
+          setError('Alasan perubahan nilai wajib diisi ketika nilai akhir berbeda dari rata-rata.')
+          setSavingReview(null)
+          return
+        }
+      }
+    }
+
     try {
       const { data, error: upsertError } = await supabase
         .from('contribution_reviews')
@@ -383,13 +402,29 @@ export function EvaluationPage() {
           target_id: targetId,
           review_text: reviewData.review_text || null,
           adjusted_score: reviewData.adjusted_score
-        }, { 
-          onConflict: 'period_id,reviewer_id,target_id' 
+        }, {
+          onConflict: 'period_id,reviewer_id,target_id'
         })
         .select()
         .single()
 
       if (upsertError) throw upsertError
+
+      // Catat audit log jika ada penyesuaian nilai
+      if (reviewData.adjusted_score !== null && reviewData.adjusted_score !== undefined) {
+        const previousScore = currentAvg !== undefined ? Math.round(currentAvg * 10) / 10 : null
+        await supabase
+          .from('score_audit_log')
+          .insert({
+            period_id: period.id,
+            group_id: groupId,
+            reviewer_id: user.id,
+            target_id: targetId,
+            previous_score: previousScore,
+            new_score: reviewData.adjusted_score,
+            reason: reviewData.review_text || 'Tidak ada alasan'
+          })
+      }
 
       if (data) {
         setLeaderReviews(prev => ({
@@ -411,8 +446,8 @@ export function EvaluationPage() {
   }
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'bg-green-100 text-green-800 border-green-200'
-    if (score >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    if (score >= 4) return 'bg-green-100 text-green-800 border-green-200'
+    if (score >= 3) return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     return 'bg-red-100 text-red-800 border-red-200'
   }
 
@@ -447,8 +482,8 @@ export function EvaluationPage() {
             <p className="mt-1 text-sm text-slate-500">Kelola periode, berikan penilaian, dan lihat rekapitulasi nilai.</p>
           </div>
           {period && (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => navigate(`/groups/${groupId}/report`)}
             >
@@ -503,9 +538,9 @@ export function EvaluationPage() {
                         <Button onClick={handleOpenPeriod} isLoading={actionLoading} className="flex-1">
                           <Unlock className="w-4 h-4 mr-2" /> Buka Periode Baru
                         </Button>
-                        <Button 
-                          variant="secondary" 
-                          onClick={handleFinalizePeriod} 
+                        <Button
+                          variant="secondary"
+                          onClick={handleFinalizePeriod}
                           isLoading={actionLoading}
                           className="flex-1"
                         >
@@ -535,7 +570,18 @@ export function EvaluationPage() {
         {/* Card 2: Formulir Voting (Hanya jika periode 'open') */}
         {period && period.status === 'open' && (
           <Card title="Formulir Penilaian Anggota">
-            <p className="text-sm text-slate-600 mb-4">Berikan nilai kontribusi (0-100) kepada anggota kelompok Anda. Penilaian ini bersifat rahasia.</p>
+            <p className="text-sm text-slate-600 mb-4">Berikan nilai kontribusi (1-5) kepada anggota kelompok Anda berdasarkan kriteria berikut:</p>
+            <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
+                {([1, 2, 3, 4, 5] as const).map(s => (
+                  <div key={s} className="text-center p-2 bg-white rounded border border-slate-200">
+                    <p className="font-bold text-sm">{s}</p>
+                    <p className="font-medium mt-0.5">{scoreCriteria[s].label}</p>
+                    <p className="text-slate-500 mt-0.5 hidden sm:block">{scoreCriteria[s].description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
             {members.filter(m => m.user_id !== user?.id).length === 0 ? (
               <EmptyState
                 icon={User}
@@ -569,7 +615,19 @@ export function EvaluationPage() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="sm:col-span-1">
-                        <Input label="Nilai (0-100)" type="number" min="0" max="100" value={currentVote.score ?? ''} onChange={(e) => handleVoteChange(member.user_id, 'score', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="0" />
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nilai (1-5)</label>
+                        <select
+                          value={currentVote.score ?? ''}
+                          onChange={(e) => handleVoteChange(member.user_id, 'score', e.target.value === '' ? undefined : Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500"
+                        >
+                          <option value="">Pilih nilai...</option>
+                          <option value={1}>1 - Sangat Kurang</option>
+                          <option value={2}>2 - Kurang</option>
+                          <option value={3}>3 - Cukup</option>
+                          <option value={4}>4 - Baik</option>
+                          <option value={5}>5 - Sangat Baik</option>
+                        </select>
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Komentar (Opsional)</label>
@@ -591,7 +649,7 @@ export function EvaluationPage() {
         {period && (
           <Card title="Hasil Evaluasi & Review Ketua">
             <p className="text-sm text-slate-600 mb-4">
-              Rata-rata nilai dihitung otomatis dari seluruh penilaian anggota. Ketua dapat menambahkan review akhir.
+              Rata-rata nilai dihitung otomatis dari seluruh penilaian anggota (skala 1-5). Ketua dapat menambahkan review akhir dengan alasan yang jelas.
             </p>
             {members.length === 0 ? (
               <EmptyState
@@ -605,7 +663,7 @@ export function EvaluationPage() {
                 const result = evalResults[member.user_id]
                 const review = leaderReviews[member.user_id] || { review_text: '', adjusted_score: null }
                 const displayScore = review.adjusted_score !== null ? review.adjusted_score : (result ? result.avg_score : null)
-                
+
                 return (
                   <div key={member.user_id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -626,20 +684,20 @@ export function EvaluationPage() {
                           <p className="text-xs text-slate-500">{member.profiles?.student_id || '-'}</p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-3">
                         <div className="text-right">
                           <p className="text-xs text-slate-500">
                             {review.adjusted_score !== null ? 'Nilai Akhir (Disesuaikan)' : 'Rata-rata Nilai'}
                           </p>
                           <p className="text-xl font-bold text-slate-900">
-                            {displayScore !== null ? displayScore : '-'} 
-                            <span className="text-sm font-normal text-slate-500"> / 100</span>
+                            {displayScore !== null ? displayScore.toFixed(1) : '-'}
+                            <span className="text-sm font-normal text-slate-500"> / 5</span>
                           </p>
                         </div>
                         {result && (
-                          <Badge 
-                            className={getScoreColor(displayScore !== null ? displayScore : result.avg_score)} 
+                          <Badge
+                            className={getScoreColor(displayScore !== null ? displayScore : result.avg_score)}
                             size="md"
                           >
                             {result.voter_count} Penilai
@@ -648,7 +706,7 @@ export function EvaluationPage() {
                       </div>
                     </div>
 
-                    {/* Form Review Khusus Ketua - Nonaktif jika finalized */}
+                    {/* Form Review Khusus Ketua */}
                     {isLeader && (
                       <div className={`pt-4 border-t border-slate-200 ${isFinalized ? 'opacity-60 pointer-events-none' : ''}`}>
                         <p className="text-xs font-medium text-slate-700 mb-2 flex items-center gap-1">
@@ -657,23 +715,30 @@ export function EvaluationPage() {
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                           <div className="sm:col-span-1">
-                            <Input 
-                              label="Nilai Akhir (Opsional)" 
-                              type="number" 
-                              min="0" max="100" 
-                              placeholder="Sama dengan rata-rata"
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Nilai Akhir (1-5)</label>
+                            <select
                               value={review.adjusted_score ?? ''}
                               onChange={(e) => setLeaderReviews(prev => ({
                                 ...prev,
                                 [member.user_id]: { ...prev[member.user_id], adjusted_score: e.target.value === '' ? null : Number(e.target.value) }
                               }))}
                               disabled={isFinalized}
-                            />
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                            >
+                              <option value="">Sama dengan rata-rata</option>
+                              <option value={1}>1 - Sangat Kurang</option>
+                              <option value={2}>2 - Kurang</option>
+                              <option value={3}>3 - Cukup</option>
+                              <option value={4}>4 - Baik</option>
+                              <option value={5}>5 - Sangat Baik</option>
+                            </select>
                           </div>
                           <div className="sm:col-span-3">
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Catatan Review</label>
-                            <textarea 
-                              rows={2} 
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                              Alasan Review {review.adjusted_score !== null && review.adjusted_score !== undefined && <span className="text-red-500">*</span>}
+                            </label>
+                            <textarea
+                              rows={2}
                               value={review.review_text}
                               onChange={(e) => setLeaderReviews(prev => ({
                                 ...prev,
@@ -687,9 +752,9 @@ export function EvaluationPage() {
                         </div>
                         {!isFinalized && (
                           <div className="mt-3 flex justify-end">
-                            <Button 
-                              size="sm" 
-                              onClick={() => handleSaveReview(member.user_id)} 
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveReview(member.user_id)}
                               isLoading={savingReview === member.user_id}
                             >
                               <Save className="w-3 h-3 mr-1" /> Simpan Review
@@ -711,7 +776,7 @@ export function EvaluationPage() {
           <ul className="space-y-2 text-sm text-slate-600">
             <li className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-              <span><strong>Saat Periode Aktif:</strong> Anggota dapat saling memberikan nilai kontribusi (0-100).</span>
+              <span><strong>Saat Periode Aktif:</strong> Anggota dapat saling memberikan nilai kontribusi (1-5).</span>
             </li>
             <li className="flex items-start gap-2">
               <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
@@ -723,7 +788,7 @@ export function EvaluationPage() {
             </li>
             <li className="flex items-start gap-2">
               <Star className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-              <span>Nilai akhir ditampilkan sebagai rata-rata dari seluruh penilai yang valid (atau disesuaikan oleh ketua).</span>
+              <span>Nilai akhir ditampilkan sebagai rata-rata dari seluruh penilai yang valid (atau disesuaikan oleh ketua dengan alasan tertulis).</span>
             </li>
           </ul>
         </Card>

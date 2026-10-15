@@ -3,7 +3,7 @@ import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { ArrowLeft, User, Flag, Calendar, Loader2, TrendingUp, Lock, Play, CheckCircle2, RotateCcw, FileText, Clock, Eye, AlertCircle } from 'lucide-react'
+import { ArrowLeft, User, Flag, Calendar, Loader2, TrendingUp, Lock, Play, CheckCircle2, RotateCcw, FileText, Clock, Eye, AlertCircle, History } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -29,7 +29,16 @@ interface ProgressUpdate {
   progress_percentage: number | null
   created_at: string
   profiles: { full_name: string } | null
-  progress_files?: { id: string; file_path: string; file_name: string }[]
+  progress_files?: { id: string; file_path: string; file_name: string; file_type: string }[]
+}
+
+interface StatusHistory {
+  id: string
+  old_status: string
+  new_status: string
+  created_at: string
+  changed_by: string | null
+  profiles?: { full_name: string } | null
 }
 
 export function TaskDetailPage() {
@@ -39,6 +48,7 @@ export function TaskDetailPage() {
 
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [progressUpdates, setProgressUpdates] = useState<ProgressUpdate[]>([])
+  const [statusHistory, setStatusHistory] = useState<StatusHistory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -46,6 +56,7 @@ export function TaskDetailPage() {
   const [isAssignee, setIsAssignee] = useState(false)
   const [showProgressModal, setShowProgressModal] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
 
   useEffect(() => {
     if (!groupId || !taskId || !user) return
@@ -66,22 +77,22 @@ export function TaskDetailPage() {
           return
         }
 
-        const formattedTask = { 
-          ...taskData, 
-          assignee: Array.isArray(taskData.assignee) ? taskData.assignee[0] : taskData.assignee 
+        const formattedTask = {
+          ...taskData,
+          assignee: Array.isArray(taskData.assignee) ? taskData.assignee[0] : taskData.assignee
         }
         setTask(formattedTask)
 
         const { data: progressData, error: progressError } = await supabase
           .from('progress_updates')
           .select(`
-            id, 
-            description, 
-            progress_percentage, 
+            id,
+            description,
+            progress_percentage,
             created_at,
             user_id,
             profiles:user_id(full_name),
-            progress_files(id, file_path, file_name)
+            progress_files(id, file_path, file_name, file_type)
           `)
           .eq('task_id', taskId)
           .order('created_at', { ascending: true })
@@ -89,11 +100,51 @@ export function TaskDetailPage() {
         if (progressError) throw progressError
 
         if (progressData) {
-          setProgressUpdates(progressData.map((p: any) => ({ 
-            ...p, 
-            profiles: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles,
-            progress_files: p.progress_files || []
-          })))
+          const updatesWithSignedUrls = await Promise.all(
+            progressData.map(async (p: any) => {
+              const files = p.progress_files || []
+              const filesWithUrls = await Promise.all(
+                files.map(async (f: any) => {
+                  const { data: signedUrlData } = await supabase.storage
+                    .from('progress-files')
+                    .createSignedUrl(f.file_path, 3600)
+                  return { ...f, signed_url: signedUrlData?.signedUrl || f.file_path }
+                })
+              )
+              return {
+                ...p,
+                profiles: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles,
+                progress_files: filesWithUrls
+              }
+            })
+          )
+          setProgressUpdates(updatesWithSignedUrls)
+        }
+
+        // Ambil riwayat perubahan status (jika tabel sudah ada)
+        try {
+          const { data: historyData, error: historyError } = await supabase
+            .from('task_status_history')
+            .select(`
+              id,
+              old_status,
+              new_status,
+              created_at,
+              changed_by,
+              profiles:changed_by(full_name)
+            `)
+            .eq('task_id', taskId)
+            .order('created_at', { ascending: false })
+
+          if (!historyError && historyData) {
+            const formattedHistory = historyData.map((h: any) => ({
+              ...h,
+              profiles: Array.isArray(h.profiles) ? h.profiles[0] : h.profiles
+            }))
+            setStatusHistory(formattedHistory)
+          }
+        } catch {
+          // Tabel belum ada, abaikan
         }
 
         const { data: memberData, error: memberError } = await supabase
@@ -122,6 +173,30 @@ export function TaskDetailPage() {
     const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
     if (!error) {
       setTask({ ...task, status: newStatus as any })
+      // Fetch ulang history
+      try {
+        const { data: historyData } = await supabase
+          .from('task_status_history')
+          .select(`
+            id,
+            old_status,
+            new_status,
+            created_at,
+            changed_by,
+            profiles:changed_by(full_name)
+          `)
+          .eq('task_id', task.id)
+          .order('created_at', { ascending: false })
+        if (historyData) {
+          const formattedHistory = historyData.map((h: any) => ({
+            ...h,
+            profiles: Array.isArray(h.profiles) ? h.profiles[0] : h.profiles
+          }))
+          setStatusHistory(formattedHistory)
+        }
+      } catch {
+        // abaikan
+      }
     } else {
       setError(error.message || 'Gagal mengubah status tugas.')
     }
@@ -150,12 +225,15 @@ export function TaskDetailPage() {
   const statusColor = { todo: 'default' as const, in_progress: 'warning' as const, in_review: 'info' as const, done: 'success' as const }
   const priorityLabel = { low: 'Rendah', medium: 'Sedang', high: 'Tinggi' }
 
+  // Tugas diassign ke ketua: ketua bisa langsung tandai selesai tanpa review
+  const isLeaderAssigned = isLeader && isAssignee
+
   return (
     <Layout>
       {/* HEADER - MOBILE FRIENDLY */}
       <div className="mb-4 sm:mb-6 px-4 sm:px-0">
-        <button 
-          onClick={() => navigate(`/groups/${groupId}/tasks`)} 
+        <button
+          onClick={() => navigate(`/groups/${groupId}/tasks`)}
           className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 mb-3"
         >
           <ArrowLeft className="w-4 h-4" /> Kembali
@@ -179,16 +257,56 @@ export function TaskDetailPage() {
             <span>{error}</span>
           </div>
         )}
-        
+
         {/* KOLOM KIRI: DESKRIPSI & PROGRES (2/3 di desktop) */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-          
+
           {/* Card Deskripsi */}
           <Card title="Deskripsi">
             <p className="text-sm sm:text-base text-slate-700 whitespace-pre-line break-words">
               {task.description || 'Tidak ada deskripsi.'}
             </p>
           </Card>
+
+          {/* Card Riwayat Status */}
+          {statusHistory.length > 0 && (
+            <Card
+              title="Riwayat Perubahan Status"
+              description={`${statusHistory.length} perubahan tercatat`}
+              action={
+                <Button variant="ghost" size="sm" onClick={() => setShowHistory(!showHistory)}>
+                  <History className="w-4 h-4 mr-1" />
+                  {showHistory ? 'Sembunyikan' : 'Tampilkan'}
+                </Button>
+              }
+            >
+              {showHistory && (
+                <ol className="relative border-l-2 border-slate-200 ml-3 space-y-3">
+                  {statusHistory.map((entry) => (
+                    <li key={entry.id} className="ml-6">
+                      <span className="absolute -left-2.5 flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 ring-4 ring-white">
+                        <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                      </span>
+                      <div className="bg-slate-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm font-medium text-slate-900">
+                            {entry.profiles?.full_name || 'User'}
+                          </p>
+                          <time className="text-xs text-slate-500">
+                            {new Date(entry.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </time>
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Mengubah status dari <Badge variant="default" size="sm">{statusLabel[entry.old_status as keyof typeof statusLabel] || entry.old_status}</Badge>
+                          {' '}menjadi <Badge variant="info" size="sm">{statusLabel[entry.new_status as keyof typeof statusLabel] || entry.new_status}</Badge>
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Card>
+          )}
 
           {/* Card Riwayat Progres */}
           <Card title="Riwayat Progres" description={`${progressUpdates.length} pembaruan`}>
@@ -213,27 +331,29 @@ export function TaskDetailPage() {
                         </time>
                       </div>
                       <p className="text-sm text-slate-700 mb-2 break-words">{update.description}</p>
-                      
-                      {/* File Lampiran */}
+
+                      {/* File Lampiran - dengan Signed URL */}
                       {update.progress_files && update.progress_files.length > 0 && (
                         <div className="mb-3 space-y-2">
                           <p className="text-xs font-medium text-slate-500">File Lampiran:</p>
                           {update.progress_files.map((file: any) => (
-                            <div 
+                            <div
                               key={file.id}
                               className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg"
                             >
                               <FileText className="w-4 h-4 text-primary-600 flex-shrink-0" />
                               <span className="flex-1 text-xs sm:text-sm text-slate-700 truncate min-w-0">{file.file_name}</span>
-                              <a 
-                                href={file.file_path} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 bg-primary-600 text-white text-xs font-medium rounded hover:bg-primary-700 transition-colors flex-shrink-0"
-                              >
-                                <Eye className="w-3 h-3" />
-                                <span className="hidden sm:inline">Lihat</span>
-                              </a>
+                              {file.signed_url && (
+                                <a
+                                  href={file.signed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 bg-primary-600 text-white text-xs font-medium rounded hover:bg-primary-700 transition-colors flex-shrink-0"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span className="hidden sm:inline">Lihat</span>
+                                </a>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -258,7 +378,7 @@ export function TaskDetailPage() {
 
         {/* KOLOM KANAN: DETAIL & AKSI (1/3 di desktop, pindah ke bawah di mobile) */}
         <div className="space-y-4 sm:space-y-6">
-          
+
           {/* Card Detail Tugas */}
           <Card title="Detail Tugas">
             <dl className="space-y-3 sm:space-y-4 text-sm">
@@ -296,7 +416,44 @@ export function TaskDetailPage() {
 
           {/* Card Aksi Cepat */}
           <Card title="Aksi Cepat">
-            {isAssignee ? (
+            {isLeaderAssigned ? (
+              // Ketua sebagai assignee: bisa langsung selesai tanpa review
+              <div className="space-y-2">
+                {task.status === 'todo' && (
+                  <>
+                    <Button fullWidth size="sm" onClick={() => handleQuickStatus('in_progress')} isLoading={updatingStatus}>
+                      <Play className="w-4 h-4 mr-2" /> Mulai Mengerjakan
+                    </Button>
+                    <Button variant="outline" fullWidth size="sm" onClick={() => setShowProgressModal(true)}>
+                      <TrendingUp className="w-4 h-4 mr-2" /> Tambah Laporan Progres
+                    </Button>
+                  </>
+                )}
+                {task.status === 'in_progress' && (
+                  <>
+                    <Button fullWidth size="sm" onClick={() => handleQuickStatus('done')} isLoading={updatingStatus}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Tandai Selesai (Langsung)
+                    </Button>
+                    <Button variant="outline" fullWidth size="sm" onClick={() => setShowProgressModal(true)}>
+                      <TrendingUp className="w-4 h-4 mr-2" /> Tambah Laporan Progres
+                    </Button>
+                  </>
+                )}
+                {task.status === 'in_review' && (
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                    <Loader2 className="w-5 h-5 animate-spin flex-shrink-0" />
+                    <span>Tugas sudah diajukan. <strong>Menunggu direview ketua lain.</strong></span>
+                  </div>
+                )}
+                {task.status === 'done' && (
+                  <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+                    <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                    <span>Tugas telah selesai.</span>
+                  </div>
+                )}
+              </div>
+            ) : isAssignee ? (
+              // Anggota biasa sebagai assignee: flow normal dengan review
               <div className="space-y-2">
                 {task.status === 'todo' && (
                   <>
@@ -332,6 +489,7 @@ export function TaskDetailPage() {
                 )}
               </div>
             ) : isLeader ? (
+              // Ketua BUKAN sebagai assignee: review tugas anggota
               <div className="space-y-2">
                 {task.status === 'in_review' ? (
                   <>
@@ -359,6 +517,7 @@ export function TaskDetailPage() {
                 )}
               </div>
             ) : (
+              // Bukan assignee, bukan ketua: hanya bisa lihat
               <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
                 <Lock className="w-4 h-4" />
                 <span>Anda hanya bisa memantau progres tugas ini.</span>
