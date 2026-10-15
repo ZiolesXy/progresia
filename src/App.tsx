@@ -12,6 +12,9 @@ const EvaluationPage = lazy(() => import('./pages/EvaluationPage').then((module)
 const ReportPage = lazy(() => import('./pages/ReportPage').then((module) => ({ default: module.ReportPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const RegisterPage = lazy(() => import('./pages/RegisterPage').then((module) => ({ default: module.RegisterPage })))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then((module) => ({ default: module.ForgotPasswordPage })))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then((module) => ({ default: module.ResetPasswordPage })))
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 
 function App() {
   return (
@@ -22,9 +25,12 @@ function App() {
             {/* Halaman Publik */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+
             {/* Halaman Terproteksi */}
             <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><GroupsPage /></ProtectedRoute>} />
             <Route path="/groups/:groupId" element={<ProtectedRoute><GroupDetailPage /></ProtectedRoute>} />
             <Route path="/groups/:groupId/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />

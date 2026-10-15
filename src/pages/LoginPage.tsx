@@ -79,6 +79,15 @@ export function LoginPage() {
               </div>
             )}
 
+            <div className="flex justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Lupa kata sandi?
+              </Link>
+            </div>
+
             <Button type="submit" fullWidth size="lg" isLoading={loading}>
               Masuk
             </Button>
