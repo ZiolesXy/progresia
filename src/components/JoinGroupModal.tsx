@@ -102,6 +102,7 @@ export function JoinGroupModal({ isOpen, onClose }: JoinGroupModalProps) {
       }
 
       // 5. Tambahkan user sebagai anggota
+      // Note: DB trigger akan menolak jika grup sudah penuh (race condition safe)
       const { error: insertError } = await supabase
         .from('group_members')
         .insert({
@@ -110,7 +111,16 @@ export function JoinGroupModal({ isOpen, onClose }: JoinGroupModalProps) {
           role: 'member',
         })
 
-      if (insertError) throw insertError
+      if (insertError) {
+        // Jika trigger tolak karena penuh
+        if (insertError.message.includes('full') || insertError.message.includes('Group is full')) {
+          setError('Kelompok sudah penuh')
+        } else {
+          throw insertError
+        }
+        setLoading(false)
+        return
+      }
 
       handleClose()
     } catch (err: any) {

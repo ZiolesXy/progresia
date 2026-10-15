@@ -278,6 +278,45 @@ create trigger trg_task_status_history
   for each row execute function public.log_task_status_change();
 
 -- ============================================================
+-- TRIGGER: GROUP CAPACITY GUARD (cegah over-capacity)
+-- ============================================================
+
+create or replace function public.check_group_capacity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_count integer;
+  max_capacity integer;
+begin
+  -- Hitung jumlah anggota saat ini (excluding row yang sedang diinsert jika update)
+  select count(*) into current_count
+  from public.group_members
+  where group_id = new.group_id;
+
+  -- Ambil kapasitas maksimal grup
+  select capacity into max_capacity
+  from public.groups
+  where id = new.group_id;
+
+  -- Jika insert baru dan sudah tolak
+  if current_count >= max_capacity then
+    raise exception 'Group is full (%). Cannot add more members.', max_capacity
+    using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_group_members_capacity on public.group_members;
+create trigger trg_group_members_capacity
+  before insert on public.group_members
+  for each row execute function public.check_group_capacity();
+
+-- ============================================================
 -- HELPER FUNCTIONS
 -- ============================================================
 
