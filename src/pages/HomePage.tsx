@@ -182,25 +182,25 @@ export function HomePage() {
 
   const stats = [
     { label: 'Kelompok Aktif', value: groups.length, icon: Users, color: 'text-primary-600 bg-primary-50' },
-    { label: 'Tugas Selesai', value: tasks.filter(t => t.status === 'done').length, icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Sedang Dikerjakan', value: tasks.filter(t => t.status === 'in_progress').length, icon: Clock, color: 'text-amber-600 bg-amber-50' },
-    { label: 'Belum Dimulai', value: tasks.filter(t => t.status === 'todo').length, icon: AlertCircle, color: 'text-slate-600 bg-slate-100' },
+    { label: 'Tugas Selesai', value: myTasks.filter(t => t.status === 'done').length, icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50' },
+    { label: 'Sedang Dikerjakan', value: myTasks.filter(t => t.status === 'in_progress').length, icon: Clock, color: 'text-amber-600 bg-amber-50' },
+    { label: 'Belum Dimulai', value: myTasks.filter(t => t.status === 'todo').length, icon: AlertCircle, color: 'text-slate-600 bg-slate-100' },
   ]
 
-  // Data untuk chart status tugas
+  // Data untuk chart status tugas (hanya yang ada datanya)
   const statusChartData = [
-    { name: 'Selesai', value: tasks.filter(t => t.status === 'done').length },
-    { name: 'Dikerjakan', value: tasks.filter(t => t.status === 'in_progress').length },
-    { name: 'Review', value: tasks.filter(t => t.status === 'in_review').length },
-    { name: 'Belum', value: tasks.filter(t => t.status === 'todo').length },
-  ]
+    { name: 'Selesai', value: myTasks.filter(t => t.status === 'done').length },
+    { name: 'Dikerjakan', value: myTasks.filter(t => t.status === 'in_progress').length },
+    { name: 'Review', value: myTasks.filter(t => t.status === 'in_review').length },
+    { name: 'Belum', value: myTasks.filter(t => t.status === 'todo').length },
+  ].filter(item => item.value > 0)
 
-  // Data untuk chart prioritas
+  // Data untuk chart prioritas (hanya yang ada datanya)
   const priorityChartData = [
-    { name: 'Tinggi', value: tasks.filter(t => t.priority === 'high').length },
-    { name: 'Sedang', value: tasks.filter(t => t.priority === 'medium').length },
-    { name: 'Rendah', value: tasks.filter(t => t.priority === 'low').length },
-  ]
+    { name: 'Tinggi', value: myTasks.filter(t => t.priority === 'high').length },
+    { name: 'Sedang', value: myTasks.filter(t => t.priority === 'medium').length },
+    { name: 'Rendah', value: myTasks.filter(t => t.priority === 'low').length },
+  ].filter(item => item.value > 0)
 
   if (loading) {
     return (
@@ -243,7 +243,7 @@ export function HomePage() {
       </div>
 
       {/* Grafik Statistik */}
-      {tasks.length > 0 && (
+      {myTasks.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <Card title="Status Tugas" description="Distribusi status seluruh tugas">
             <div className="h-48">
