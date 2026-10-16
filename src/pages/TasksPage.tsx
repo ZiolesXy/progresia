@@ -4,7 +4,7 @@ import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { Plus, Filter, Clock, CheckCircle2, AlertCircle, Loader2, Users, Lock } from 'lucide-react'
+import { Plus, Filter, Clock, CheckCircle2, AlertCircle, Loader2, Users, Lock, ArrowLeft } from 'lucide-react'
 import { useTasks } from '../hooks/useTasks'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase/client'
@@ -93,6 +93,14 @@ export function TasksPage() {
 
   return (
     <Layout>
+      <button
+        onClick={() => navigate(`/groups/${groupId}`)}
+        className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 mb-3"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Kembali ke Detail Kelompok
+      </button>
+
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Daftar Tugas</h1>
